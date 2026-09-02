@@ -1,0 +1,22 @@
+name: gif_writer
+description: A streaming GIF encoder. Writes frames straight to a sink as they arrive, so memory stays flat no matter how long the animation runs.
+version: 0.1.0
+repository: https://github.com/srad/gif_writer
+issue_tracker: https://github.com/srad/gif_writer/issues
+
+topics:
+  - gif
+  - image
+  - encoding
+  - animation
+
+environment:
+  sdk: ^3.4.0
+
+dev_dependencies:
+  # The oracle, and only ever that: tests encode with this package and decode
+  # with `image`, so a round trip is checked against an independent
+  # implementation rather than against our own reader.
+  image: ^4.2.0
+  lints: ^4.0.0
+  test: ^1.25.0
