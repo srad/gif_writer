@@ -44,4 +44,50 @@ Future<void> main() async {
 
   await gif.close();
   print('wrote plasma.gif — $frames frames, ${size}x$size');
+
+  await _rgbExample();
+}
+
+/// The other entry point: **RGB in**, mapped onto a table you supply.
+///
+/// Colours the table cannot hold are dithered between the two nearest entries.
+/// The default is [GifDither.blueNoise] rather than Floyd–Steinberg, because
+/// error diffusion makes static regions decode differently from frame to frame —
+/// see the README.
+Future<void> _rgbExample() async {
+  const size = 128;
+
+  // The 216-colour web-safe cube: six levels per channel.
+  final colors = GifColorTable.packed(<int>[
+    for (var r = 0; r < 6; r++)
+      for (var g = 0; g < 6; g++)
+        for (var b = 0; b < 6; b++)
+          (r * 51) << 16 | (g * 51) << 8 | (b * 51),
+  ]);
+
+  final gif = GifWriter.toFile(
+    'gradient.gif',
+    width: size,
+    height: size,
+    colors: colors,
+    dither: GifDither.blueNoise,
+  );
+
+  final rgb = Uint8List(size * size * 3);
+  for (var f = 0; f < 60; f++) {
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        final p = (y * size + x) * 3;
+        // A smooth gradient — exactly what a small palette cannot represent and
+        // what a dither is for.
+        rgb[p] = (x * 255 ~/ size);
+        rgb[p + 1] = (y * 255 ~/ size);
+        rgb[p + 2] = ((f * 255 ~/ 60) + x) & 0xFF;
+      }
+    }
+    await gif.addRgbFrame(rgb, delay: const Duration(milliseconds: 40));
+  }
+
+  await gif.close();
+  print('wrote gradient.gif — 60 RGB frames dithered onto 216 colours');
 }

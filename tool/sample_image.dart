@@ -39,6 +39,56 @@ abstract final class SampleImage {
     return pixels;
   }
 
+  /// The same photographic statistics, in **RGB** — three bytes per pixel, with
+  /// colour rather than a single ramp.
+  ///
+  /// This is what the dither benchmark needs: [photo] is already palettised, so
+  /// there would be nothing to map or dither. Here the shading is continuous and
+  /// no palette can hold it, which is precisely the case a dither exists for.
+  static Uint8List photoRgb({required int side, int seed = 11}) {
+    final random = Random(seed);
+    final pixels = Uint8List(side * side * 3);
+    final discs = <(double x, double y, double r, int rgb)>[
+      for (var i = 0; i < 6; i++)
+        (
+          random.nextDouble() * side,
+          random.nextDouble() * side,
+          side * (0.12 + random.nextDouble() * 0.22),
+          random.nextInt(0x1000000),
+        ),
+    ];
+
+    for (var y = 0; y < side; y++) {
+      for (var x = 0; x < side; x++) {
+        // A soft two-axis wash for the background, so the frame is full of the
+        // slow gradients that band worst when a palette cannot represent them.
+        var r = 40.0 + 120.0 * (x / side);
+        var g = 60.0 + 100.0 * (y / side);
+        var b = 140.0 - 80.0 * ((x + y) / (2 * side));
+
+        for (final (cx, cy, radius, rgb) in discs) {
+          final dx = x - cx;
+          final dy = y - cy;
+          final distance = sqrt(dx * dx + dy * dy);
+          if (distance < radius) {
+            final shade = 0.55 + 0.45 * (1 - distance / radius);
+            r = ((rgb >> 16) & 0xFF) * shade;
+            g = ((rgb >> 8) & 0xFF) * shade;
+            b = (rgb & 0xFF) * shade;
+          }
+        }
+
+        // Grain, so runs are not unrealistically long.
+        final grain = (random.nextDouble() - 0.5) * 8;
+        final p = (y * side + x) * 3;
+        pixels[p] = (r + grain).clamp(0, 255).round();
+        pixels[p + 1] = (g + grain).clamp(0, 255).round();
+        pixels[p + 2] = (b + grain).clamp(0, 255).round();
+      }
+    }
+    return pixels;
+  }
+
   /// Photographic statistics: smooth shading, hard edges, and fine grain.
   ///
   /// The three things that decide how a photograph compresses. Shading gives

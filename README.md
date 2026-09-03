@@ -27,8 +27,8 @@ interleaved trials**, and every gap below is wider than the run-to-run spread of
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="doc/throughput-dark.png">
-    <img src="doc/throughput-light.png" alt="Throughput and output size against package:image across four workloads" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/srad/gif_writer/main/doc/throughput-dark.png">
+    <img src="https://raw.githubusercontent.com/srad/gif_writer/main/doc/throughput-light.png" alt="Throughput and output size against package:image across four workloads" width="100%">
   </picture>
 </p>
 
@@ -58,8 +58,8 @@ And the number that is not a percentage:
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="doc/memory-dark.png">
-    <img src="doc/memory-light.png" alt="Memory held against frames written: flat for gif_writer, linear for package:image" width="88%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/srad/gif_writer/main/doc/memory-dark.png">
+    <img src="https://raw.githubusercontent.com/srad/gif_writer/main/doc/memory-light.png" alt="Memory held against frames written: flat for gif_writer, linear for package:image" width="88%">
   </picture>
 </p>
 
@@ -116,8 +116,19 @@ for (final frame in frames) {
 await gif.close();
 ```
 
-`frame` is one byte per pixel — an index into the colour table you supplied. No quantiser sits in the
-path, so what you put in is what decodes out, byte for byte.
+`frame` is one byte per pixel — an index into the colour table you supplied. Nothing approximates it:
+what you put in is what decodes out, **byte for byte**.
+
+Already holding ordinary pixels? Pass those instead and they are mapped onto the same table, dithered
+where it cannot hold the exact colour:
+
+```dart
+await gif.addRgbFrame(rgb);                          // 3 bytes per pixel
+await gif.addRgbaFrame(rgba, background: 0xFFFFFF);  // 4, composited first
+```
+
+A pixel that *is* exactly a table colour still maps to that entry, so palettised content survives this
+path unchanged. Choosing the table for you — quantisation — is 0.3.0; see [Scope](#scope).
 
 ## Recipes
 
@@ -125,12 +136,17 @@ path, so what you put in is what decodes out, byte for byte.
 <summary><strong>Pipe a stream of frames</strong></summary>
 
 `GifWriter` is a `StreamConsumer<GifFrame>`, so frames are consumed as they are produced and never
-collected into a list.
+collected into a list. A `GifFrame` comes in the same three shapes as the `add…Frame` methods.
 
 ```dart
 await frames.pipe(
   GifWriter.toFile('out.gif', width: w, height: h, colors: colors),
 );
+
+// frames yields any mix of:
+GifFrame(indices: bytes);                      // one byte per pixel
+GifFrame.rgb(rgb);                             // three
+GifFrame.rgba(rgba, background: 0xFFFFFF);     // four
 ```
 </details>
 
@@ -169,6 +185,9 @@ GifWriter(sink, ..., bufferSize: 4 * 1024);
 
 The staging buffer is the package's whole fixed overhead besides the LZW tables. Below about a
 kilobyte the syscalls cost more than the buffer saves.
+
+If you only ever call `addIndexedFrame`, that is the whole story — the 96 kB colour cube and the
+dither's error rows are allocated on the **first RGB frame** and never before it.
 </details>
 
 ## Benchmarks
@@ -219,8 +238,17 @@ edges and fine grain. Reproducible exactly, on any machine, with no download.
 
 ### Where the speed comes from
 
-Fixed overhead is about 190 kB and does not grow: a 64 kB staging buffer plus a 128 kB LZW string
-table, both allocated **once for the whole animation** rather than per frame.
+Fixed overhead does not grow with the animation. What it is depends on which entry point you use, and
+**an indexed-only caller pays nothing for the RGB machinery** — none of it is allocated until the
+first RGB frame:
+
+| path | fixed overhead |
+| :-- | --: |
+| `addIndexedFrame` | **~192 kB** — a 64 kB staging buffer plus a 128 kB LZW string table |
+| `addRgbFrame`, ordered dither | ~288 kB — plus the 96 kB inverse colour cube |
+| `addRgbFrame`, error diffusion | ~288 kB + `12 × width` for two rows of error |
+
+All of it allocated **once for the whole animation** rather than per frame.
 
 | | |
 | --- | --- |
@@ -246,6 +274,10 @@ the first probe already succeeds.
 | `GifWriter(sink, …)` | Writes to any `StreamSink<List<int>>`. |
 | `GifWriter.toFile(path, …)` | Convenience for `dart:io`, with back-pressure wired to `IOSink.flush`. |
 | `addIndexedFrame(indices, delay:)` | One byte per pixel. Validated, then compressed straight out. |
+| `addRgbFrame(rgb, delay:)` | Three bytes per pixel, mapped onto your table with the writer's dither. |
+| `addRgbaFrame(rgba, background:, delay:)` | Four bytes per pixel, composited over `background` first. |
+| `GifDither.blueNoise` / `.bayer4` / `.bayer8` / `.floydSteinberg` / `.atkinson` / `.none` | How in-between colours are resolved. |
+| `GifFrame.rgb(…)` / `.rgba(…, background:)` | The same three shapes, for the stream form. |
 | `addStream(stream)` / `pipe` | Consume a `Stream<GifFrame>`. |
 | `close()` | Writes the trailer and closes the sink. |
 | `GifColorTable.packed([0xRRGGBB, …])` | Up to 256 colours. |
@@ -259,6 +291,65 @@ layer down — a producer faster than the disk would queue frames *inside* the s
 memory somewhere much harder to notice. `GifWriter.toFile` handles this for you; pass `onFlush`
 yourself for other sinks.
 
+### Dithering, and why the default is not Floyd–Steinberg
+
+Pass RGB and the writer maps it onto your table, dithering colours the table cannot hold:
+
+```dart
+final gif = GifWriter.toFile(
+  'out.gif',
+  width: w,
+  height: h,
+  colors: colors,
+  dither: GifDither.blueNoise,   // the default
+);
+await gif.addRgbFrame(rgb);                            // 3 bytes per pixel
+await gif.addRgbaFrame(rgba, background: 0xFFFFFF);    // 4, composited first
+```
+
+**Floyd–Steinberg makes the best-looking single image and is the wrong default for an animation.** It
+carries error from each pixel into the next, so one pixel changing by one level changes every pixel
+after it. Three consequences: static regions decode differently frame to frame and the result
+shimmers; the noise defeats the LZW dictionary this package is built around; and no region is ever
+byte-identical, which rules out frame diffing.
+
+An ordered dither reads its threshold from position alone. The same colour in the same place always
+resolves the same way, so **a one-pixel change affects exactly one pixel** — a property with a test on
+it, not just a claim.
+
+Measured with [`tool/dither.dart`](tool/dither.dart), 27 colours on a photographic frame:
+
+| | blurred error | structure | output | rate |
+| :-- | --: | --: | --: | --: |
+| `none` | 33.37 | 1226 | **0.15 MB** | **65.5 Mpx/s** |
+| `bayer4` | 21.10 | 571 | 0.27 MB | 32.7 Mpx/s |
+| `bayer8` | 21.09 | 564 | 0.28 MB | 30.9 Mpx/s |
+| **`blueNoise`** (default) | **21.05** | 578 | 0.41 MB | 27.6 Mpx/s |
+| `floydSteinberg` | **4.04** | 84 | 0.62 MB | 18.4 Mpx/s |
+| `atkinson` | 9.72 | 63 | 0.57 MB | 10.2 Mpx/s |
+
+**Read that error column carefully.** It is RMSE after blurring *both* images, because per-pixel error
+measures the opposite of what dithering is for — a dithered pixel is deliberately the wrong colour, the
+right one on average across its neighbours. On plain per-pixel error `none` scores best of all six and
+looks the worst; the tool prints both columns so the divergence is visible rather than hidden.
+
+Blue noise and Bayer score the same there, and that is a limit of the metric rather than a real tie:
+blurring destroys high-frequency structure, which is precisely where an ordered dither's artefact
+lives. On a flat mid-tone field, where the only structure is the dither's own:
+
+| | structure |
+| :-- | --: |
+| `bayer4`, `bayer8` | 4095 — the maximum: a pure periodic grid |
+| `floydSteinberg` | 4095 — its known "worm" patterns on flat areas |
+| `atkinson` | 1870 |
+| **`blueNoise`** | **10** |
+
+That 400-fold difference is the whole reason blue noise is the default, and it is visible immediately
+on any gradient. **It is not free**: it costs about 50% more bytes than Bayer at 27 colours, because
+unstructured noise is harder to compress than a repeating pattern. If output size matters more than
+smoothness, `bayer4` is the one to reach for; if the target is a single still image, `floydSteinberg`
+is markedly more accurate than anything else here.
+
 ### Delays are hundredths of a second
 
 That is all the format stores. A `Duration` is rounded to the nearest hundredth, and **most viewers
@@ -267,18 +358,18 @@ express; this package writes what you ask for rather than pretending otherwise.
 
 ## Scope
 
-**0.1.0 takes indexed frames**: you bring the colour table, one byte per pixel. That is exactly what
-the format needs, and it is lossless — no quantiser, so the round trip is byte-exact.
+**You bring the colour table.** Indexed frames are byte-exact, and RGB frames are mapped onto the table
+you supplied. What is *not* here yet is choosing that table for you — see 0.3.0.
 
 | version | |
 | --- | --- |
 | **0.1.0** ✅ | Streaming container, LZW, indexed frames, any sink |
-| 0.2.0 | Octree quantisation and RGBA input, global or per-frame palettes |
-| 0.3.0 | Dithering, transparency, disposal methods |
-| 0.4.0 | Frame diffing — write only the changed rectangle |
+| **0.2.0** ✅ | RGB and RGBA input, mapped to your table, with five dithers |
+| 0.3.0 | Octree quantisation — deriving the palette, global or per frame |
+| 0.4.0 | Transparency, disposal methods, frame diffing |
 
 Quantisation is deliberately not first: it is the part with a memory cost of its own, and getting the
-streaming container right matters more than accepting more input formats early.
+streaming container and the mapping right matters more than accepting more input formats early.
 
 ## Testing
 

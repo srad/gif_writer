@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'byte_sink.dart';
+import 'color_mapper.dart';
 import 'color_table.dart';
+import 'dither.dart';
 // `dart:io` reaches this package through exactly one seam, so the core stays
 // compilable on the web and `toFile` still exists there — throwing, which is
 // honest, rather than being absent and breaking the build.
@@ -47,14 +49,20 @@ class GifRepeat {
 /// The header is written on the **first frame**, not at construction, so a
 /// future version can derive the colour table from that frame.
 ///
+/// Three ways in, all onto the colour table given here: [addIndexedFrame] takes
+/// one byte per pixel and is byte-exact, while [addRgbFrame] and [addRgbaFrame]
+/// map and dither.
+///
 /// ```dart
 /// final gif = GifWriter(
 ///   sink,
 ///   width: 64,
 ///   height: 64,
-///   colors: GifColorTable.packed(<int>[0x000000, 0xFFFFFF]),
+///   colors: GifColorTable.packed(<int>[0x000000, 0xFF5500, 0xFFFFFF]),
+///   dither: GifDither.blueNoise, // the default; only the RGB paths use it
 /// );
-/// await gif.addIndexedFrame(pixels, delay: const Duration(milliseconds: 50));
+/// await gif.addIndexedFrame(indices, delay: const Duration(milliseconds: 50));
+/// await gif.addRgbFrame(rgb, delay: const Duration(milliseconds: 50));
 /// await gif.close();
 /// ```
 class GifWriter implements StreamConsumer<GifFrame> {
@@ -73,12 +81,18 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// half.
   /// Lower it on a memory budget; below about a kilobyte the syscalls start to
   /// cost more than the buffer saves.
+  ///
+  /// [dither] applies only to the RGB entry points; [addIndexedFrame] never
+  /// touches it, because indices are already exact. It defaults to
+  /// [GifDither.blueNoise] — see [GifDither] for why an ordered dither and not
+  /// Floyd–Steinberg.
   GifWriter(
     StreamSink<List<int>> sink, {
     required int width,
     required int height,
     required GifColorTable colors,
     GifRepeat repeat = GifRepeat.forever,
+    GifDither dither = GifDither.blueNoise,
     Future<void> Function()? onFlush,
     int bufferSize = 64 * 1024,
   }) : _out = BufferedByteSink(sink, capacity: bufferSize),
@@ -86,6 +100,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
        _height = _checkDimension(height, 'height'),
        _colors = colors,
        _repeat = repeat,
+       _dither = dither,
        _onFlush = onFlush;
 
   /// Writes to a file at [path], truncating anything already there.
@@ -105,6 +120,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
     required int height,
     required GifColorTable colors,
     GifRepeat repeat = GifRepeat.forever,
+    GifDither dither = GifDither.blueNoise,
   }) {
     final sink = openFileSink(path);
     return GifWriter(
@@ -113,6 +129,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
       height: height,
       colors: colors,
       repeat: repeat,
+      dither: dither,
       onFlush: flusherFor(sink),
     );
   }
@@ -138,7 +155,24 @@ class GifWriter implements StreamConsumer<GifFrame> {
   final int _height;
   final GifColorTable _colors;
   final GifRepeat _repeat;
+  final GifDither _dither;
   final Future<void> Function()? _onFlush;
+
+  /// Built on the **first RGB frame**, never for an indexed-only animation.
+  ///
+  /// The colour cache is 96 kB and the dither's error rows are another
+  /// `12 x width`. A caller that only ever passes indices — which is every
+  /// caller from 0.1.x — pays none of it.
+  ColorMapper? _mapper;
+  DitherRunner? _runner;
+
+  /// Reused across frames, like everything else here: one byte per pixel, so it
+  /// is the one buffer that scales with the frame rather than the animation.
+  Uint8List? _scratch;
+
+  /// Where RGBA is flattened before mapping. Allocated only if [addRgbaFrame]
+  /// is ever called.
+  Uint8List? _rgbScratch;
 
   /// One encoder for the whole animation. Its hash tables come to about 128 kB
   /// that a per-frame encoder would allocate and throw away on every frame.
@@ -188,11 +222,115 @@ class GifWriter implements StreamConsumer<GifFrame> {
         'expected $expected bytes for ${_width}x$_height',
       );
     }
+    await _writeIndexed(indices: indices, delay: delay, validate: true);
+  }
+
+  /// Appends a frame of RGB pixels, three bytes each, mapped to the colour table.
+  ///
+  /// The table is the one given at construction — **this does not choose a
+  /// palette**, and there is no quantiser in the package yet. Colours that are
+  /// not in the table are dithered between the two nearest entries, using the
+  /// writer's [GifDither].
+  ///
+  /// A pixel that is *exactly* a table colour always maps to that entry, so
+  /// palettised content survives this path unchanged.
+  Future<void> addRgbFrame(
+    Uint8List rgb, {
+    Duration delay = Duration.zero,
+  }) async {
+    if (_closed) {
+      throw StateError('the writer is closed');
+    }
+    final expected = _width * _height * 3;
+    if (rgb.length != expected) {
+      throw ArgumentError.value(
+        rgb.length,
+        'rgb',
+        'expected $expected bytes for ${_width}x$_height at 3 bytes per pixel',
+      );
+    }
+    final indices = _map(rgb);
+    // No range check: these indices came from our own mapper, which cannot
+    // produce one outside the table. The check exists for bytes a caller
+    // supplied, and it is a whole extra pass over every pixel.
+    await _writeIndexed(indices: indices, delay: delay, validate: false);
+  }
+
+  /// Appends a frame of RGBA pixels, four bytes each, composited over
+  /// [background] and then mapped as [addRgbFrame] does.
+  ///
+  /// [background] is **required rather than defaulted**. GIF transparency is not
+  /// implemented yet, so alpha has to go somewhere; picking white silently would
+  /// give a wrong colour for every semi-transparent pixel, and the caller is the
+  /// only one who knows what the image sits on.
+  Future<void> addRgbaFrame(
+    Uint8List rgba, {
+    required int background,
+    Duration delay = Duration.zero,
+  }) async {
+    if (_closed) {
+      throw StateError('the writer is closed');
+    }
+    final expected = _width * _height * 4;
+    if (rgba.length != expected) {
+      throw ArgumentError.value(
+        rgba.length,
+        'rgba',
+        'expected $expected bytes for ${_width}x$_height at 4 bytes per pixel',
+      );
+    }
+    await _writeIndexed(
+      indices: _map(_composite(rgba: rgba, background: background)),
+      delay: delay,
+      validate: false,
+    );
+  }
+
+  /// Flattens RGBA onto an opaque background, in place in the scratch buffer.
+  Uint8List _composite({required Uint8List rgba, required int background}) {
+    final br = (background >> 16) & 0xFF;
+    final bg = (background >> 8) & 0xFF;
+    final bb = background & 0xFF;
+    final rgb = _rgbScratch ??= Uint8List(_width * _height * 3);
+    for (var i = 0, p = 0; p < rgb.length; i += 4, p += 3) {
+      final a = rgba[i + 3];
+      if (a == 255) {
+        rgb[p] = rgba[i];
+        rgb[p + 1] = rgba[i + 1];
+        rgb[p + 2] = rgba[i + 2];
+      } else {
+        // Rounded, not truncated: `+ 127` costs nothing and stops a long
+        // gradient drifting a level darker than it should be.
+        rgb[p] = (rgba[i] * a + br * (255 - a) + 127) ~/ 255;
+        rgb[p + 1] = (rgba[i + 1] * a + bg * (255 - a) + 127) ~/ 255;
+        rgb[p + 2] = (rgba[i + 2] * a + bb * (255 - a) + 127) ~/ 255;
+      }
+    }
+    return rgb;
+  }
+
+  Uint8List _map(Uint8List rgb) {
+    final mapper = _mapper ??= ColorMapper(_colors);
+    final runner = _runner ??= DitherRunner(
+      dither: _dither,
+      mapper: mapper,
+      width: _width,
+    );
+    final out = _scratch ??= Uint8List(_width * _height);
+    runner.mapRgb(rgb: rgb, out: out);
+    return out;
+  }
+
+  Future<void> _writeIndexed({
+    required Uint8List indices,
+    required Duration delay,
+    required bool validate,
+  }) async {
     // Skipped entirely for a full table, where no byte can be out of range —
     // and a full table is the common case, since anything that quantises
     // produces 256 colours. This is a whole extra pass over every pixel, so
     // "free when it cannot fail" is worth the branch.
-    if (!_everyByteValid) {
+    if (validate && !_everyByteValid) {
       final limit = _colors.length;
       // One OR per pixel, then a single comparison — rather than a compare and a
       // branch per pixel, which measured as most of the gap against an encoder
@@ -321,7 +459,18 @@ class GifWriter implements StreamConsumer<GifFrame> {
   @override
   Future<void> addStream(Stream<GifFrame> stream) async {
     await for (final frame in stream) {
-      await addIndexedFrame(frame.indices, delay: frame.delay);
+      switch (frame.kind) {
+        case GifFrameKind.indexed:
+          await addIndexedFrame(frame.pixels, delay: frame.delay);
+        case GifFrameKind.rgb:
+          await addRgbFrame(frame.pixels, delay: frame.delay);
+        case GifFrameKind.rgba:
+          await addRgbaFrame(
+            frame.pixels,
+            background: frame.background,
+            delay: frame.delay,
+          );
+      }
     }
   }
 }

@@ -1,3 +1,45 @@
+## 0.2.0
+
+RGB and RGBA input, mapped onto the colour table you supply, with five dithers. **The indexed path is
+byte-for-byte unchanged** — pinned by a golden fixture captured from 0.1.0 before any of this existed.
+
+### Added
+
+- `addRgbFrame` (three bytes per pixel) and `addRgbaFrame` (four, composited over a **required**
+  `background`, because transparency is not implemented yet and silently dropping alpha would give a
+  wrong colour rather than an obvious error).
+- `GifDither.blueNoise` (default), `.bayer4`, `.bayer8`, `.floydSteinberg`, `.atkinson` and `.none`.
+- `GifFrame.rgb` and `GifFrame.rgba`, so `frames.pipe(writer)` accepts everything the direct calls do.
+- A pixel that is *exactly* a table colour always maps to that entry, so palettised content survives
+  the RGB path unchanged.
+
+### Why the default is an ordered dither
+
+Floyd–Steinberg makes the best single image and is wrong for an animation: it carries error between
+pixels, so one pixel changing by one level changes every pixel after it. Static regions then decode
+differently frame to frame, the noise defeats LZW, and no region is ever byte-identical, which rules
+out frame diffing. An ordered dither reads its threshold from position alone, so a one-pixel change
+affects exactly one pixel — which has a test on it rather than a claim in a comment.
+
+Blue noise over Bayer was **measured, not assumed**, and the first metric got it wrong. Blurred RMSE
+rates the two identically, because blurring destroys the high-frequency structure that is exactly
+where an ordered dither's artefact lives. On a flat field, where the only structure is the dither's
+own, Bayer scores 4095 — a pure periodic grid — against blue noise's 10. It costs about 50% more
+bytes; `bayer4` remains there for callers who want the smaller file.
+
+### Memory
+
+Unchanged for indexed callers at ~192 kB. RGB adds a 96 kB inverse colour cube, and error diffusion
+two rows of error at `12 × width` — allocated on the first RGB frame, never for an indexed-only
+animation, and never per frame.
+
+### Fixed
+
+- The README's benchmark charts now use absolute URLs. pub.dev renders `<img>` only when it can
+  resolve the URL, so the relative `doc/…` paths in 0.1.0 were stripped to their alt text and both
+  charts showed as bracketed prose on the package page. GitHub resolves them fine, which is what hid
+  it until after publishing.
+
 ## 0.1.0
 
 First release: a high-performance, low-memory streaming GIF encoder.
