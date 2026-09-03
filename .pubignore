@@ -1,6 +1,32 @@
-# Kept in the repository, left out of the published archive.
+# What stays out of the published archive.
 #
-# The README points at these through absolute raw.githubusercontent URLs, so
-# pub.dev renders them without the archive carrying 390 kB of PNG that nobody
-# downloading the package will ever open.
+# **This file REPLACES .gitignore for publishing — it does not add to it.** That
+# is the trap: `__pycache__/` was ignored by git, so it never reached the
+# repository, and it still shipped inside 0.2.0 because this file did not repeat
+# the rule. Anything that should be absent from the archive has to be listed
+# here even if git already ignores it.
+
+# The benchmark charts. The README points at them through absolute
+# raw.githubusercontent URLs, so pub.dev renders them without the archive
+# carrying 390 kB of PNG that nobody downloading the package will open.
 doc/
+
+# Python bytecode, left behind by importing tool/blue_noise.py.
+__pycache__/
+*.py[cod]
+
+# Encoder output from a benchmark or example run.
+*.gif
+
+# Editor, agent and OS scratch.
+.idea/
+*.iml
+.vscode/
+.codegraph
+.claude
+.codex
+.agents
+CLAUDE.md
+AGENTS.md
+.DS_Store
+Thumbs.db
