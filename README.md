@@ -1,8 +1,9 @@
 <h1 align="center">gif_writer</h1>
 
 <p align="center">
-  <strong>A streaming GIF encoder for Dart.</strong><br>
-  Frames go out as they arrive, so memory stays flat however long the animation runs.
+  <strong>A high-performance, low-memory GIF encoder for Dart.</strong><br>
+  Frames are compressed and written out as they arrive, so memory stays flat<br>
+  however long the animation runs — and it is faster than the alternative while doing it.
 </p>
 
 <p align="center">
@@ -16,6 +17,32 @@
 </p>
 
 ---
+
+## At a glance
+
+Against [`package:image`](https://pub.dev/packages/image), the only other GIF encoder for Dart.
+60 frames of 256×256, both given pre-palettised input so neither quantises. **Median of nine
+interleaved trials**, with the observed range beside it:
+
+| | throughput | range | held in memory | output |
+| :-- | --: | --: | --: | --: |
+| **gif_writer** · 256 colours | **37.9 Mpx/s** | 36.6 – 39.8 | **0.06 MB** | **5.15 MB** |
+| `package:image` · 256 colours | 30.3 Mpx/s | 29.0 – 30.8 | 5.19 MB | 5.19 MB |
+| **gif_writer** · 32 colours | 26.9 Mpx/s | 26.4 – 27.7 | **0.05 MB** | **2.91 MB** |
+| `package:image` · 32 colours | 28.8 Mpx/s | 27.2 – 29.6 | 3.04 MB | 3.04 MB |
+
+**25% faster with a full palette** — a gap well outside both spreads. At 32 colours the two are
+**level**: `package:image`'s median is a shade higher, but the difference is smaller than the
+run-to-run variation, so neither is meaningfully ahead.
+
+The column that is not close is the fourth. `package:image` hands over the finished file, so what it
+holds *is* the file; this holds a fixed staging buffer. At 60 frames that is 5.19 MB against 0.06 MB;
+at 1000 frames it would be ~100 MB against the same 0.06 MB, because one side scales with the
+animation and the other does not.
+
+Reproduce it with [`dart run tool/compare.dart`](tool/compare.dart). It decodes **both** outputs and
+checks every pixel against the input before reporting a single timing, and refuses to report at all if
+either encoder got the picture wrong.
 
 ## The problem
 
@@ -131,30 +158,27 @@ NeuQuant this package does not implement, and the comparison would say nothing. 
 outputs and checks them pixel-for-pixel against the input before printing a single number; it refuses
 to report timings if either is wrong.
 
-| | throughput | largest single handover | output size |
-| --- | ---: | ---: | ---: |
-| **gif_writer** — 256 colours | **41.0 Mpx/s** | **0.06 MB** | **5.15 MB** |
-| `package:image` — 256 colours | 32.3 Mpx/s | 5.19 MB | 5.19 MB |
-| **gif_writer** — 32 colours | 29.7 Mpx/s | **0.05 MB** | **2.91 MB** |
-| `package:image` — 32 colours | 29.4 Mpx/s | 3.04 MB | 3.04 MB |
+The full comparison, and how it is measured, is in [At a glance](#at-a-glance) above.
 
-Read honestly: **about 25% faster with a full palette, and level at 32 colours** — there the
-run-to-run spread is wider than the gap, so calling it a win would be overstating it. Files come out
-slightly smaller, 4% at 32 colours.
+### Method
 
-The number that is not close is the third column. `package:image` hands over the finished file in one
-piece, so what it holds *is* the file; this package hands over a fixed staging buffer. At 60 frames
-that is 5.19 MB against 0.06 MB. At 1000 frames it would be ~100 MB against the same 0.06 MB, because
-one side scales with the animation and the other does not.
+Both benchmarks report the **median of nine trials**, not the best of them. An earlier version took
+best-of-N and it flattered this package: at 32 colours it showed `gif_writer` ahead, where the median
+puts the two level and `package:image` marginally in front. A minimum measures the luckiest moment the
+machine had. The comparison also **interleaves** the two encoders rather than running them in blocks,
+so a thermal drift or a background process partway through hits both equally, and it prints the range
+so a gap smaller than the noise cannot be read as a result.
 
 ### On its own
 
 120 frames of 256×256 at 32 colours, [`tool/benchmark.dart`](tool/benchmark.dart):
 
-| workload | throughput | sink writes | output |
-| --- | ---: | ---: | ---: |
-| noise — worst case for LZW | **29.2 Mpx/s** | 121 | 5.82 MB |
-| smooth gradient | **144.7 Mpx/s** | 121 | 0.30 MB |
+| workload | throughput | range | output | sink writes |
+| :-- | ---: | ---: | ---: | ---: |
+| noise — worst case for LZW | **27.2 Mpx/s** | 26.3 – 28.3 | 5.82 MB | 121 |
+| smooth gradient | **135.9 Mpx/s** | 132.9 – 141.6 | 0.30 MB | 121 |
+
+Where it started, before any of the tuning below: 12.4 Mpx/s on noise and 36.6 on the gradient.
 
 ### Where the speed comes from
 

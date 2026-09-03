@@ -69,30 +69,46 @@ Future<void> main() async {
       await gif.close();
     }
 
-    final sink = CountingSink();
-    final gif = GifWriter(sink, width: size, height: size, colors: table);
-    final watch = Stopwatch()..start();
-    for (var f = 0; f < frames; f++) {
-      await gif.addIndexedFrame(frame);
+    // **Median of an odd number of trials, never the best one.** A minimum is a
+    // measurement of the luckiest moment the machine had; the median is what a
+    // caller would actually see. The range is printed beside it so a difference
+    // smaller than the noise cannot be read as a result.
+    const trials = 9;
+    final times = <double>[];
+    var bytes = 0;
+    var adds = 0;
+    for (var t = 0; t < trials; t++) {
+      final sink = CountingSink();
+      final gif = GifWriter(sink, width: size, height: size, colors: table);
+      final watch = Stopwatch()..start();
+      for (var f = 0; f < frames; f++) {
+        await gif.addIndexedFrame(frame);
+      }
+      await gif.close();
+      watch.stop();
+      times.add(watch.elapsedMicroseconds / 1000);
+      bytes = sink.bytes;
+      adds = sink.adds;
     }
-    await gif.close();
-    watch.stop();
+    times.sort();
 
     final pixels = size * size * frames;
-    final ms = watch.elapsedMicroseconds / 1000;
-    final mpps = pixels / watch.elapsedMicroseconds;
+    double rate(double ms) => pixels / (ms * 1000);
     print(
-      '${name.padRight(10)} '
-      '${ms.toStringAsFixed(1).padLeft(8)} ms   '
-      '${mpps.toStringAsFixed(1).padLeft(6)} Mpx/s   '
-      '${(sink.bytes / 1024 / 1024).toStringAsFixed(2).padLeft(6)} MB out   '
-      '${sink.adds} sink writes',
+      '${name.padRight(10)}'
+      '${'${rate(times[trials ~/ 2]).toStringAsFixed(1)} Mpx/s'.padLeft(14)}'
+      '${'${rate(times.last).toStringAsFixed(1)} - '
+              '${rate(times.first).toStringAsFixed(1)}'
+          .padLeft(18)}'
+      '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MB'.padLeft(11)}'
+      '${adds.toString().padLeft(8)}',
     );
   }
 
   print('$frames frames of $size x $size, $colours colours');
-  print('${'workload'.padRight(10)} ${'time'.padLeft(11)}   '
-      '${'rate'.padLeft(11)}   ${'size'.padLeft(9)}   writes');
+  print('median of 9 trials, range alongside\n');
+  print('${'workload'.padRight(10)}${'rate (median)'.padLeft(14)}'
+      '${'range'.padLeft(18)}${'output'.padLeft(11)}${'writes'.padLeft(8)}');
   await run('noise', noise);
   await run('smooth', smooth);
 }

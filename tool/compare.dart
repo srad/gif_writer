@@ -146,39 +146,80 @@ Future<void> main() async {
   await runOurs();
   runTheirs();
 
-  // Best of five. A single sample on a desktop is mostly a measurement of what
-  // else the machine was doing.
-  (double, int, int, int) best(
-    (double, int, int, int) a,
-    (double, int, int, int) b,
-  ) => a.$1 <= b.$1 ? a : b;
-
-  var ours = await runOurs();
-  var theirs = runTheirs();
-  for (var i = 0; i < 4; i++) {
-    ours = best(ours, await runOurs());
-    theirs = best(theirs, runTheirs());
+  // **Median of an odd number of trials, with the spread reported.**
+  //
+  // Not best-of-N, which an earlier version of this tool used: the minimum is a
+  // measurement of the luckiest moment the machine had, and it silently
+  // flatters whichever encoder happens to be scheduled better. The median is
+  // what a user would actually see, and printing the range beside it is what
+  // stops a 3% difference being read as a result when the spread is 5%.
+  //
+  // The two are interleaved rather than run in blocks, so a thermal drift or a
+  // background process partway through hits both equally.
+  const trials = 9;
+  final oursRuns = <(double, int, int, int)>[];
+  final theirsRuns = <(double, int, int, int)>[];
+  for (var i = 0; i < trials; i++) {
+    oursRuns.add(await runOurs());
+    theirsRuns.add(runTheirs());
   }
+
+  (double median, double low, double high) spread(
+    List<(double, int, int, int)> runs,
+  ) {
+    final times = runs.map((r) => r.$1).toList()..sort();
+    return (times[times.length ~/ 2], times.first, times.last);
+  }
+
+  final ours = oursRuns.first;
+  final theirs = theirsRuns.first;
+  final oursTime = spread(oursRuns);
+  final theirsTime = spread(theirsRuns);
 
   String mb(int bytes) => '${(bytes / 1024 / 1024).toStringAsFixed(2)} MB';
   final pixels = size * size * frames;
 
-  print('$frames frames of $size x $size, $colours colours, neither quantising\n');
-  print('${'encoder'.padRight(16)}${'time'.padLeft(10)}'
-      '${'rate'.padLeft(14)}${'largest handover'.padLeft(19)}'
-      '${'writes'.padLeft(9)}${'output'.padLeft(11)}');
-  for (final (name, r) in <(String, (double, int, int, int))>[
-    ('gif_writer', ours),
-    ('package:image', theirs),
+  print('$frames frames of $size x $size, $colours colours, neither quantising');
+  print('median of $trials interleaved trials, range alongside\n');
+  print('${'encoder'.padRight(16)}${'rate (median)'.padLeft(16)}'
+      '${'range'.padLeft(20)}${'held'.padLeft(10)}'
+      '${'writes'.padLeft(8)}${'output'.padLeft(11)}');
+  for (final (name, r, t) in <(
+    String,
+    (double, int, int, int),
+    (double, double, double),
+  )>[
+    ('gif_writer', ours, oursTime),
+    ('package:image', theirs, theirsTime),
   ]) {
-    final (ms, bytes, peak, adds) = r;
+    final (_, bytes, peak, adds) = r;
+    final (median, low, high) = t;
+    double rate(double ms) => pixels / (ms * 1000);
     print('${name.padRight(16)}'
-        '${'${ms.toStringAsFixed(0)} ms'.padLeft(10)}'
-        '${'${(pixels / (ms * 1000)).toStringAsFixed(1)} Mpx/s'.padLeft(14)}'
-        '${mb(peak).padLeft(19)}'
-        '${adds.toString().padLeft(9)}'
+        '${'${rate(median).toStringAsFixed(1)} Mpx/s'.padLeft(16)}'
+        '${'${rate(high).toStringAsFixed(1)} - '
+                '${rate(low).toStringAsFixed(1)}'
+            .padLeft(20)}'
+        '${mb(peak).padLeft(10)}'
+        '${adds.toString().padLeft(8)}'
         '${mb(bytes).padLeft(11)}');
   }
+
+  // Stated rather than left to the reader: a difference smaller than the wider
+  // of the two spreads is not a result, and saying so is the difference between
+  // a benchmark and an advertisement.
+  final gap = (pixels / (oursTime.$1 * 1000)) - (pixels / (theirsTime.$1 * 1000));
+  final spreadWidth = [
+    (pixels / (oursTime.$2 * 1000)) - (pixels / (oursTime.$3 * 1000)),
+    (pixels / (theirsTime.$2 * 1000)) - (pixels / (theirsTime.$3 * 1000)),
+  ].reduce((a, b) => a > b ? a : b);
+  final verdict = gap.abs() <= spreadWidth
+      ? 'level: the ${gap.abs().toStringAsFixed(1)} Mpx/s gap is inside the '
+            '${spreadWidth.toStringAsFixed(1)} Mpx/s spread'
+      : '${gap > 0 ? 'gif_writer' : 'package:image'} ahead by '
+            '${(gap.abs() / (pixels / (theirsTime.$1 * 1000)) * 100).toStringAsFixed(0)}%, '
+            'outside the ${spreadWidth.toStringAsFixed(1)} Mpx/s spread';
+  print('\n$verdict');
 }
 
 /// Captures bytes so the fairness check can decode what we wrote.

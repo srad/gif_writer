@@ -3,3 +3,9 @@
 pubspec.lock
 build/
 *.gif
+.codegraph
+.claude
+.codex
+.agennts
+CLAUDE.md
+AGENTS.md

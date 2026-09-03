@@ -1,5 +1,5 @@
 name: gif_writer
-description: A streaming GIF encoder. Writes frames straight to a sink as they arrive, so memory stays flat no matter how long the animation runs.
+description: A high-performance, low-memory GIF encoder. Streams frames straight to a sink as they arrive, so memory stays flat however long the animation runs.
 version: 0.1.0
 repository: https://github.com/srad/gif_writer
 issue_tracker: https://github.com/srad/gif_writer/issues
