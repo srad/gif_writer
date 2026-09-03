@@ -1,0 +1,6 @@
+# Kept in the repository, left out of the published archive.
+#
+# The README points at these through absolute raw.githubusercontent URLs, so
+# pub.dev renders them without the archive carrying 390 kB of PNG that nobody
+# downloading the package will ever open.
+doc/

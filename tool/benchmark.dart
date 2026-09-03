@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:gif_writer/gif_writer.dart';
+
+import 'sample_image.dart';
 
 /// Throughput of the encoder, measured rather than assumed.
 ///
@@ -41,16 +42,12 @@ Future<void> main() async {
       (i * 255 ~/ (colours - 1)) * 0x010101,
   ]);
 
-  // Two workloads, because they stress opposite ends of LZW. Noise fills the
-  // dictionary constantly and never gets long matches; a smooth gradient is
-  // mostly long runs and exercises the fast path.
-  final noise = Uint8List(size * size);
-  final smooth = Uint8List(size * size);
-  final random = Random(7);
-  for (var i = 0; i < noise.length; i++) {
-    noise[i] = random.nextInt(colours);
-    smooth[i] = ((i ~/ size) * colours ~/ size).clamp(0, colours - 1);
-  }
+  // Three workloads, because one number hides the range. Noise and a gradient
+  // are the two extremes LZW can meet; `photo` is built to sit where real
+  // content does, between them.
+  final noise = SampleImage.noise(side: size, colours: colours);
+  final smooth = SampleImage.smooth(side: size, colours: colours);
+  final photo = SampleImage.photo(side: size, colours: colours);
 
   Future<void> run(String name, Uint8List frame) async {
     // One untimed pass first: the JIT should be warm before the clock starts, or
@@ -110,5 +107,6 @@ Future<void> main() async {
   print('${'workload'.padRight(10)}${'rate (median)'.padLeft(14)}'
       '${'range'.padLeft(18)}${'output'.padLeft(11)}${'writes'.padLeft(8)}');
   await run('noise', noise);
+  await run('photo', photo);
   await run('smooth', smooth);
 }

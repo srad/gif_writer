@@ -3,7 +3,8 @@
 <p align="center">
   <strong>A high-performance, low-memory GIF encoder for Dart.</strong><br>
   Frames are compressed and written out as they arrive, so memory stays flat<br>
-  however long the animation runs — and it is faster than the alternative while doing it.
+  however long the animation runs — while running <strong>1.5–1.9× faster</strong> than the<br>
+  alternative and writing a smaller file.
 </p>
 
 <p align="center">
@@ -22,41 +23,63 @@
 
 Against [`package:image`](https://pub.dev/packages/image), the only other GIF encoder for Dart.
 60 frames of 256×256, both given pre-palettised input so neither quantises. **Median of nine
-interleaved trials**, with the observed range beside it:
+interleaved trials**, and every gap below is wider than the run-to-run spread of either encoder:
 
-| | throughput | range | held in memory | output |
-| :-- | --: | --: | --: | --: |
-| **gif_writer** · 256 colours | **37.9 Mpx/s** | 36.6 – 39.8 | **0.06 MB** | **5.15 MB** |
-| `package:image` · 256 colours | 30.3 Mpx/s | 29.0 – 30.8 | 5.19 MB | 5.19 MB |
-| **gif_writer** · 32 colours | 26.9 Mpx/s | 26.4 – 27.7 | **0.05 MB** | **2.91 MB** |
-| `package:image` · 32 colours | 28.8 Mpx/s | 27.2 – 29.6 | 3.04 MB | 3.04 MB |
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="doc/throughput-dark.png">
+    <img src="doc/throughput-light.png" alt="Throughput and output size against package:image across four workloads" width="100%">
+  </picture>
+</p>
 
-**25% faster with a full palette** — a gap well outside both spreads. At 32 colours the two are
-**level**: `package:image`'s median is a shade higher, but the difference is smaller than the
-run-to-run variation, so neither is meaningfully ahead.
+| workload | gif_writer | `package:image` | | gif_writer | `package:image` | |
+| :-- | --: | --: | :-- | --: | --: | :-- |
+| photo · 32 colours | **82.2 Mpx/s** | 48.1 Mpx/s | **+71%** | **1.13 MB** | 1.21 MB | **−6.4%** |
+| photo · 256 colours | **53.7 Mpx/s** | 35.8 Mpx/s | **+50%** | **3.34 MB** | 3.39 MB | **−1.3%** |
+| noise · 32 colours | **56.1 Mpx/s** | 30.2 Mpx/s | **+86%** | **2.91 MB** | 3.04 MB | **−4.3%** |
+| noise · 256 colours | **46.5 Mpx/s** | 29.2 Mpx/s | **+60%** | **5.15 MB** | 5.19 MB | **−0.8%** |
+| | *throughput* | | | *file written* | | |
 
-The column that is not close is the fourth. `package:image` hands over the finished file, so what it
-holds *is* the file; this holds a fixed staging buffer. At 60 frames that is 5.19 MB against 0.06 MB;
-at 1000 frames it would be ~100 MB against the same 0.06 MB, because one side scales with the
-animation and the other does not.
+**1.5–1.9× faster, and the file is smaller every time.** Speed alone would not settle it — an encoder
+can always go faster by compressing worse — so the output size sits in the table beside it.
 
-Reproduce it with [`dart run tool/compare.dart`](tool/compare.dart). It decodes **both** outputs and
-checks every pixel against the input before reporting a single timing, and refuses to report at all if
-either encoder got the picture wrong.
+The percentages are from one run on one machine, and they move: a second run of the same tool put
+noise · 32 at +95% and photo · 256 at +46%. What is stable across runs is the direction, the rough
+size of the gap, and the file sizes, which are **byte-identical every time** because compression is
+deterministic. Treat the throughput column as "comfortably faster", not as four significant figures —
+and run it on your own hardware, which is the only number that describes your hardware.
+
+And the number that is not a percentage:
+
+| | held in memory, 60 frames | held in memory, 1000 frames |
+| :-- | --: | --: |
+| **gif_writer** | **0.06 MB** | **0.06 MB** |
+| `package:image` | 5.19 MB | ~87 MB |
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="doc/memory-dark.png">
+    <img src="doc/memory-light.png" alt="Memory held against frames written: flat for gif_writer, linear for package:image" width="88%">
+  </picture>
+</p>
+
+`package:image` hands over the finished file, so what it holds *is* the file. This holds a fixed
+staging buffer. One side scales with the animation; the other does not — and that is the whole reason
+this package exists.
+
+Reproduce the numbers with [`dart run tool/compare.dart`](tool/compare.dart) — it decodes **both**
+outputs and checks every pixel against the input before reporting a single timing, and refuses to
+report at all if either encoder got the picture wrong. Redraw the charts with
+[`python tool/charts.py`](tool/charts.py).
 
 ## The problem
 
 Every GIF encoder available for Dart builds the finished file in memory and hands it back at the end.
 That is fine for a six-frame spinner. It is unworkable for anything long:
 
-```
-                       peak memory
-                       ────────────────────────────────────────────
-  buffering encoder    ████████████████████████████████  ~105 MB
-  gif_writer           ▏                                 ~100 kB
-                       ────────────────────────────────────────────
-                       1000 frames at 512x512
-```
+A thousand 256×256 frames is ~87 MB held at once — [measured](#at-a-glance), not estimated — and that
+scales with the frame size, so the same recording at 512×512 is four times worse. On a phone, which is
+where long GIFs actually get made, that is the difference between working and being killed.
 
 Nothing in the format requires it. A GIF is a header, a colour table, self-contained per-frame blocks,
 and a one-byte trailer — **no frame count in the header, no index, nothing to backpatch.** It is a
@@ -163,11 +186,16 @@ The full comparison, and how it is measured, is in [At a glance](#at-a-glance) a
 ### Method
 
 Both benchmarks report the **median of nine trials**, not the best of them. An earlier version took
-best-of-N and it flattered this package: at 32 colours it showed `gif_writer` ahead, where the median
-puts the two level and `package:image` marginally in front. A minimum measures the luckiest moment the
-machine had. The comparison also **interleaves** the two encoders rather than running them in blocks,
-so a thermal drift or a background process partway through hits both equally, and it prints the range
-so a gap smaller than the noise cannot be read as a result.
+best-of-N, and it flattered this package: at 32 colours it showed `gif_writer` clearly ahead where the
+median put the two level, which is what sent us looking and turned up the broken hash above. A minimum
+measures the luckiest moment the machine had; the median is what a caller sees.
+
+The comparison **interleaves** the two encoders rather than running them in blocks, so a thermal drift
+or a background process partway through hits both equally. It prints the range beside every median, and
+says in words when a gap is inside the spread, so a difference too small to be real cannot be read as a
+result. And it **decodes both outputs and checks every pixel** before reporting any timing at all —
+`package:image` silently quantises a frame that arrives without a palette, and a comparison against an
+encoder doing extra work would be worthless.
 
 ### On its own
 
@@ -175,28 +203,41 @@ so a gap smaller than the noise cannot be read as a result.
 
 | workload | throughput | range | output | sink writes |
 | :-- | ---: | ---: | ---: | ---: |
-| noise — worst case for LZW | **27.2 Mpx/s** | 26.3 – 28.3 | 5.82 MB | 121 |
-| smooth gradient | **135.9 Mpx/s** | 132.9 – 141.6 | 0.30 MB | 121 |
+| noise — worst case for LZW | **59.7 Mpx/s** | 54.0 – 61.6 | 5.82 MB | 121 |
+| photo — representative content | **89.5 Mpx/s** | 86.6 – 92.2 | 2.26 MB | 121 |
+| smooth gradient — best case | **142.9 Mpx/s** | 133.8 – 146.8 | 0.30 MB | 121 |
 
 Where it started, before any of the tuning below: 12.4 Mpx/s on noise and 36.6 on the gradient.
 
+**The test images are generated, not bundled.** The convention in this field is to reach for
+"Lenna", which IEEE retired in 2024 and most venues have dropped over its provenance — and shipping
+any photograph would add weight to the package and a licence to reason about. What an LZW encoder
+actually responds to is the *statistics* of the content: run lengths, and how often the dictionary
+hits. So [`tool/sample_image.dart`](tool/sample_image.dart) generates the three cases that bracket
+real content — uniform noise, a gradient, and a photographic image built from smooth shading, hard
+edges and fine grain. Reproducible exactly, on any machine, with no download.
+
 ### Where the speed comes from
 
-Fixed overhead is about 140 kB and does not grow: a 64 kB staging buffer plus a 78 kB LZW string
+Fixed overhead is about 190 kB and does not grow: a 64 kB staging buffer plus a 128 kB LZW string
 table, both allocated **once for the whole animation** rather than per frame.
 
 | | |
 | --- | --- |
 | **Open-addressed `Int32List` string table** | not a `Map<int, int>`. Probed once per pixel, the hottest loop here. |
-| **A hash sized for a 0.41 load factor** | the classic 5003 slots puts 4096 codes at 0.82 load and probes several times per pixel; 9973 measured ~20% faster. Larger plateaus, then loses to the cost of clearing it. |
+| **A hash every key can address** | the classic `(pixel << 4) ^ prefix` from the C implementations is quietly broken below 256 colours: at 32 it never exceeds 4095, so most of the table is unreachable and the load factor is 1.0. Mixing the key properly took noise from 27.2 to 59.7 Mpx/s. |
+| **A power-of-two table with an odd step** | odd is coprime to a power of two, so the probe still reaches every slot — what a prime table buys, without a division per pixel. The prime it replaced measured 86.8 Mpx/s on a gradient against 142.9. |
+| **Sized at a 0.25 load factor** | the classic 5003 slots puts 4096 codes at 0.82 and probes several times per pixel. 16384 is the top of the curve: 8192 measured 51.6 Mpx/s on noise, 16384 59.7, and 32768 gains nothing for twice the memory. |
 | **Batched sink writes** | passing every 255-byte sub-block straight through cost **24,365** sink calls for a 5.8 MB animation. Batching makes it 121. |
 | **Sub-blocks written in place** | the length byte is reserved and patched afterwards, so compressed bytes are never staged in a scratch array and copied — that copy is a `memcpy` of the entire output. |
 | **No per-pixel range check at 256 colours** | where no byte *can* be out of range. Elsewhere the check ORs the bytes together and only walks precisely if that suggests trouble — 2.6% rather than a second pass. |
 
-Two changes that looked obviously good and measured worse, kept here so nobody repeats them: a
-power-of-two hash with linear probing ran **36× slower** — the displacement probe needs a step coprime
-to the table size, and clustering did the rest — and enlarging the hash past ~10,000 slots costs more
-in clearing than it saves in probing.
+Three changes that looked obviously right and measured worse, kept here so nobody repeats them: a
+power-of-two hash with **linear** probing ran **36× slower**, because GIF keys cluster hard and linear
+probing turns clustering into long walks; enlarging the hash past 16384 costs more in clearing between
+frames than it saves in probing; and a prime table with `key % size`, which is correct and was the
+implementation for a while, pays a division on every pixel — most painfully where runs are long and
+the first probe already succeeds.
 
 ## API
 

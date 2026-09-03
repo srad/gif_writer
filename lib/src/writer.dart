@@ -140,7 +140,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
   final GifRepeat _repeat;
   final Future<void> Function()? _onFlush;
 
-  /// One encoder for the whole animation. Its hash tables come to about 78 kB
+  /// One encoder for the whole animation. Its hash tables come to about 128 kB
   /// that a per-frame encoder would allocate and throw away on every frame.
   final GifLzwEncoder _lzw = GifLzwEncoder();
 

@@ -1,11 +1,39 @@
+# Dart / pub
 .dart_tool/
 .packages
-pubspec.lock
 build/
+
+# A library, not an application, so the lock file is deliberately not committed:
+# pub's guidance is that packages resolve against their consumers' constraints.
+pubspec.lock
+
+# dartdoc output. **Only `doc/api/`, never `doc/`** — the README's benchmark
+# charts live in `doc/` and must stay tracked, or the images 404 on GitHub and
+# on pub.dev. `.pubignore` is what keeps them out of the published archive.
+doc/api/
+
+# Generated alongside tool/charts.py
+__pycache__/
+*.py[cod]
+
+# Encoder output: test runs and benchmarks drop these around the tree.
+#
+# Worth knowing if a demo animation is ever added to the README — it will need an
+# explicit `!doc/demo.gif` below, or it is ignored silently and the image 404s.
 *.gif
+
+# Agent and editor scratch
 .codegraph
 .claude
 .codex
+.agents
 .agennts
 CLAUDE.md
 AGENTS.md
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

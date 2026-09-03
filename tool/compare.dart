@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:gif_writer/gif_writer.dart';
 import 'package:image/image.dart' as img;
+
+import 'sample_image.dart';
 
 /// Measures this package against `package:image`, the only other GIF encoder
 /// for Dart, on identical input.
@@ -11,8 +12,10 @@ import 'package:image/image.dart' as img;
 /// **Fairness matters more than a flattering number.** Both encoders are given
 /// frames that already carry a palette, so neither quantises — `image` would
 /// otherwise be paying for NeuQuant that this package does not implement, and
-/// the comparison would say nothing. Run it yourself:
-/// `dart run tool/compare.dart`.
+/// the comparison would say nothing. Both outputs are decoded and checked
+/// pixel-for-pixel before a single timing is printed.
+///
+/// Run it yourself: `dart run tool/compare.dart`.
 final class CountingSink implements StreamSink<List<int>> {
   int bytes = 0;
   int adds = 0;
@@ -37,37 +40,63 @@ final class CountingSink implements StreamSink<List<int>> {
   Future<void> get done => Future<void>.value();
 }
 
+/// One encoder's result for one workload.
+typedef Run = ({double ms, int bytes, int peak, int adds});
+
+const int size = 256;
+const int frames = 60;
+const int trials = 9;
+
 Future<void> main() async {
-  const size = 256;
-  const frames = 60;
-  const colours = 32;
+  print('$frames frames of $size x $size, neither encoder quantising');
+  print('median of $trials interleaved trials, range alongside\n');
+  print('${'workload'.padRight(22)}${'rate (median)'.padLeft(16)}'
+      '${'range'.padLeft(20)}${'held'.padLeft(10)}'
+      '${'writes'.padLeft(8)}${'output'.padLeft(11)}');
 
-  final random = Random(7);
-  final noise = Uint8List(size * size);
-  for (var i = 0; i < noise.length; i++) {
-    noise[i] = random.nextInt(colours);
+  // Two workloads at two palette sizes. Noise is LZW's worst case and the
+  // fairest stress test of the compressor itself; the photographic image is
+  // what content actually looks like, and the two disagree enough that quoting
+  // only one of them would be a choice rather than a measurement.
+  for (final colours in <int>[32, 256]) {
+    for (final workload in <String>['noise', 'photo']) {
+      final frame = workload == 'noise'
+          ? SampleImage.noise(side: size, colours: colours)
+          : SampleImage.photo(side: size, colours: colours);
+      await compare(
+        label: '$workload · $colours colours',
+        frame: frame,
+        colours: colours,
+      );
+    }
   }
+}
 
+Future<void> compare({
+  required String label,
+  required Uint8List frame,
+  required int colours,
+}) async {
   final packed = <int>[
     for (var i = 0; i < colours; i++) (i * 255 ~/ (colours - 1)) * 0x010101,
   ];
 
   // ---- gif_writer -----------------------------------------------------------
   final table = GifColorTable.packed(packed);
-  Future<(double ms, int bytes, int peak, int adds)> runOurs() async {
+  Future<Run> runOurs() async {
     final sink = CountingSink();
     final gif = GifWriter(sink, width: size, height: size, colors: table);
     final watch = Stopwatch()..start();
     for (var f = 0; f < frames; f++) {
-      await gif.addIndexedFrame(noise);
+      await gif.addIndexedFrame(frame);
     }
     await gif.close();
     watch.stop();
     return (
-      watch.elapsedMicroseconds / 1000,
-      sink.bytes,
-      sink.peakHeld,
-      sink.adds,
+      ms: watch.elapsedMicroseconds / 1000,
+      bytes: sink.bytes,
+      peak: sink.peakHeld,
+      adds: sink.adds,
     );
   }
 
@@ -76,8 +105,12 @@ Future<void> main() async {
   // quantising. Built once and reused, exactly as the frame above is.
   final palette = img.PaletteUint8(colours, 3);
   for (var i = 0; i < colours; i++) {
-    palette.setRgb(i, (packed[i] >> 16) & 0xFF, (packed[i] >> 8) & 0xFF,
-        packed[i] & 0xFF);
+    palette.setRgb(
+      i,
+      (packed[i] >> 16) & 0xFF,
+      (packed[i] >> 8) & 0xFF,
+      packed[i] & 0xFF,
+    );
   }
   final paletted = img.Image(
     width: size,
@@ -85,11 +118,11 @@ Future<void> main() async {
     numChannels: 1,
     palette: palette,
   );
-  for (var i = 0; i < noise.length; i++) {
-    paletted.data!.setPixelR(i % size, i ~/ size, noise[i]);
+  for (var i = 0; i < frame.length; i++) {
+    paletted.data!.setPixelR(i % size, i ~/ size, frame[i]);
   }
 
-  (double ms, int bytes, int peak, int adds) runTheirs() {
+  Run runTheirs() {
     final encoder = img.GifEncoder();
     final watch = Stopwatch()..start();
     for (var f = 0; f < frames; f++) {
@@ -98,24 +131,33 @@ Future<void> main() async {
     final out = encoder.finish();
     watch.stop();
     // Everything arrives in one piece at the end — that piece *is* the peak.
-    return (watch.elapsedMicroseconds / 1000, out?.length ?? 0, out?.length ?? 0, 1);
+    return (
+      ms: watch.elapsedMicroseconds / 1000,
+      bytes: out?.length ?? 0,
+      peak: out?.length ?? 0,
+      adds: 1,
+    );
   }
 
   // ---- fairness check -------------------------------------------------------
   //
-  // **A timing comparison is worthless until both encoders are shown to be doing
-  // the same job.** `package:image` quantises unless the frame already carries a
-  // palette; if the setup above failed to give it one, it would be paying for
-  // NeuQuant and losing a race it was never entered in. So both outputs are
-  // decoded and checked against the input before a single number is printed.
+  // **A timing comparison is worthless until both encoders are shown to be
+  // doing the same job.** `package:image` quantises unless the frame already
+  // carries a palette; if the setup above failed to give it one, it would be
+  // paying for NeuQuant and losing a race it was never entered in. So both
+  // outputs are decoded and checked against the input before anything is
+  // printed — and this refuses to report timings rather than reporting bad
+  // ones.
   {
-    final sink = CountingSink();
     final builder = BytesBuilder();
-    final capture = _CapturingSink(builder);
-    final gif = GifWriter(capture, width: size, height: size, colors: table);
-    await gif.addIndexedFrame(noise);
+    final gif = GifWriter(
+      _CapturingSink(builder),
+      width: size,
+      height: size,
+      colors: table,
+    );
+    await gif.addIndexedFrame(frame);
     await gif.close();
-    sink.bytes = 0;
 
     final mine = img.GifDecoder().decode(builder.toBytes())!.frames.first;
     final encoder = img.GifEncoder()..addFrame(paletted);
@@ -123,8 +165,8 @@ Future<void> main() async {
 
     var mineWrong = 0;
     var otherWrong = 0;
-    for (var i = 0; i < noise.length; i++) {
-      final want = packed[noise[i]];
+    for (var i = 0; i < frame.length; i++) {
+      final want = packed[frame[i]];
       int rgb(img.Image f) {
         final p = f.getPixel(i % size, i ~/ size);
         return (p.r.toInt() << 16) | (p.g.toInt() << 8) | p.b.toInt();
@@ -133,11 +175,9 @@ Future<void> main() async {
       if (rgb(mine) != want) mineWrong++;
       if (rgb(other) != want) otherWrong++;
     }
-    print('fairness: gif_writer $mineWrong wrong pixels, '
-        'package:image $otherWrong wrong pixels (of ${noise.length})');
     if (mineWrong != 0 || otherWrong != 0) {
-      print('  ^ one of them is not encoding what it was given; the timings '
-          'below would be meaningless. Stopping.');
+      print('$label: NOT COMPARABLE — gif_writer $mineWrong wrong pixels, '
+          'package:image $otherWrong wrong pixels. Timings suppressed.');
       return;
     }
   }
@@ -156,70 +196,66 @@ Future<void> main() async {
   //
   // The two are interleaved rather than run in blocks, so a thermal drift or a
   // background process partway through hits both equally.
-  const trials = 9;
-  final oursRuns = <(double, int, int, int)>[];
-  final theirsRuns = <(double, int, int, int)>[];
+  final oursRuns = <Run>[];
+  final theirsRuns = <Run>[];
   for (var i = 0; i < trials; i++) {
     oursRuns.add(await runOurs());
     theirsRuns.add(runTheirs());
   }
 
-  (double median, double low, double high) spread(
-    List<(double, int, int, int)> runs,
-  ) {
-    final times = runs.map((r) => r.$1).toList()..sort();
+  (double median, double low, double high) spread(List<Run> runs) {
+    final times = runs.map((r) => r.ms).toList()..sort();
     return (times[times.length ~/ 2], times.first, times.last);
   }
 
-  final ours = oursRuns.first;
-  final theirs = theirsRuns.first;
+  final pixels = size * size * frames;
+  double rate(double ms) => pixels / (ms * 1000);
+  String mb(int bytes) => '${(bytes / 1024 / 1024).toStringAsFixed(2)} MB';
+
   final oursTime = spread(oursRuns);
   final theirsTime = spread(theirsRuns);
 
-  String mb(int bytes) => '${(bytes / 1024 / 1024).toStringAsFixed(2)} MB';
-  final pixels = size * size * frames;
-
-  print('$frames frames of $size x $size, $colours colours, neither quantising');
-  print('median of $trials interleaved trials, range alongside\n');
-  print('${'encoder'.padRight(16)}${'rate (median)'.padLeft(16)}'
-      '${'range'.padLeft(20)}${'held'.padLeft(10)}'
-      '${'writes'.padLeft(8)}${'output'.padLeft(11)}');
-  for (final (name, r, t) in <(
-    String,
-    (double, int, int, int),
-    (double, double, double),
-  )>[
-    ('gif_writer', ours, oursTime),
-    ('package:image', theirs, theirsTime),
+  print('');
+  for (final (name, r, t) in <(String, Run, (double, double, double))>[
+    ('  gif_writer', oursRuns.first, oursTime),
+    ('  package:image', theirsRuns.first, theirsTime),
   ]) {
-    final (_, bytes, peak, adds) = r;
     final (median, low, high) = t;
-    double rate(double ms) => pixels / (ms * 1000);
-    print('${name.padRight(16)}'
+    print('${(name == '  gif_writer' ? label : '').padRight(22)}'
         '${'${rate(median).toStringAsFixed(1)} Mpx/s'.padLeft(16)}'
         '${'${rate(high).toStringAsFixed(1)} - '
                 '${rate(low).toStringAsFixed(1)}'
             .padLeft(20)}'
-        '${mb(peak).padLeft(10)}'
-        '${adds.toString().padLeft(8)}'
-        '${mb(bytes).padLeft(11)}');
+        '${mb(r.peak).padLeft(10)}'
+        '${r.adds.toString().padLeft(8)}'
+        '${mb(r.bytes).padLeft(11)}   ${name.trim()}');
   }
 
   // Stated rather than left to the reader: a difference smaller than the wider
   // of the two spreads is not a result, and saying so is the difference between
   // a benchmark and an advertisement.
-  final gap = (pixels / (oursTime.$1 * 1000)) - (pixels / (theirsTime.$1 * 1000));
+  final gap = rate(oursTime.$1) - rate(theirsTime.$1);
   final spreadWidth = [
-    (pixels / (oursTime.$2 * 1000)) - (pixels / (oursTime.$3 * 1000)),
-    (pixels / (theirsTime.$2 * 1000)) - (pixels / (theirsTime.$3 * 1000)),
+    rate(oursTime.$2) - rate(oursTime.$3),
+    rate(theirsTime.$2) - rate(theirsTime.$3),
   ].reduce((a, b) => a > b ? a : b);
   final verdict = gap.abs() <= spreadWidth
-      ? 'level: the ${gap.abs().toStringAsFixed(1)} Mpx/s gap is inside the '
+      ? 'level — the ${gap.abs().toStringAsFixed(1)} Mpx/s gap is inside the '
             '${spreadWidth.toStringAsFixed(1)} Mpx/s spread'
-      : '${gap > 0 ? 'gif_writer' : 'package:image'} ahead by '
-            '${(gap.abs() / (pixels / (theirsTime.$1 * 1000)) * 100).toStringAsFixed(0)}%, '
+      : '${gap > 0 ? 'gif_writer' : 'package:image'} faster by '
+            '${(gap.abs() / rate(theirsTime.$1) * 100).toStringAsFixed(0)}%, '
             'outside the ${spreadWidth.toStringAsFixed(1)} Mpx/s spread';
-  print('\n$verdict');
+
+  // Compression, which is the other half of the story: a faster encoder that
+  // wrote a bigger file has not necessarily won.
+  final ourBytes = oursRuns.first.bytes;
+  final theirBytes = theirsRuns.first.bytes;
+  final smaller = (theirBytes - ourBytes) / theirBytes * 100;
+  final sizeVerdict = smaller.abs() < 0.05
+      ? 'output identical in size'
+      : 'output ${smaller > 0 ? 'smaller' : 'larger'} by '
+            '${smaller.abs().toStringAsFixed(1)}%';
+  print('${' ' * 22}$verdict; $sizeVerdict');
 }
 
 /// Captures bytes so the fairness check can decode what we wrote.
