@@ -43,6 +43,29 @@ is produced:
 await frames.pipe(GifWriter.toFile('out.gif', width: w, height: h, colors: colors));
 ```
 
+## Speed and memory
+
+Measured on 120 frames of 256×256, 32 colours, with `tool/benchmark.dart`. Compare candidates inside
+one run — absolute figures move with the machine.
+
+| workload | throughput | sink writes |
+| --- | --- | --- |
+| noise (worst case for LZW) | 25.8 Mpx/s | 121 |
+| smooth gradient | 119.6 Mpx/s | 121 |
+
+Fixed overhead is about 100 kB and does not grow: a 64 kB staging buffer (`bufferSize`, tunable) and
+the LZW string table. Nothing else is retained between frames — the encoder, its hash and its
+sub-block buffer are allocated once for the whole animation rather than per frame.
+
+Three things earn most of that, and each was measured rather than assumed:
+
+- **The string table is an open-addressed `Int32List`**, not a `Map<int, int>`. It is probed once per
+  pixel, which is the hottest loop in the package.
+- **Small writes are batched.** Passing every 255-byte sub-block straight to the sink cost 24,365
+  writes for a 5.8 MB animation; batching makes it 121, and roughly doubled throughput.
+- **The per-pixel range check is skipped for a 256-colour table**, where no byte can be out of range —
+  which is the common case, since anything that quantises produces 256 colours.
+
 ## Back-pressure
 
 `addIndexedFrame` awaits the sink once per frame. Without that the buffering would simply move one

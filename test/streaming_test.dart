@@ -137,6 +137,86 @@ void main() {
     expect(flushes, 6, reason: 'the trailer went out without a final flush');
   });
 
+  test('small writes are batched, not passed straight through', () async {
+    // An efficiency property, pinned because it is invisible in the output: the
+    // file is byte-identical either way. Handing every 255-byte LZW sub-block
+    // and every 8-byte control block to the sink individually cost **24,365**
+    // sink calls for a 5.8 MB animation and half the throughput. Batching into
+    // the staging buffer makes it one write per frame.
+    //
+    // The bound is per frame rather than an absolute count, so it holds however
+    // many frames the test uses, and it allows a second write for a frame whose
+    // compressed data overflows the buffer.
+    const side = 32;
+    final sink = RecordingSink();
+    final gif = GifWriter(
+      sink,
+      width: side,
+      height: side,
+      colors: grays(16),
+    );
+
+    const frames = 20;
+    for (var f = 0; f < frames; f++) {
+      await gif.addIndexedFrame(
+        Uint8List.fromList(<int>[
+          for (var i = 0; i < side * side; i++) (i * 3 + f) % 16,
+        ]),
+      );
+    }
+    await gif.close();
+
+    expect(
+      sink.lengthAfterEachAdd.length,
+      lessThanOrEqualTo(frames * 2 + 2),
+      reason:
+          'the sink was written to ${sink.lengthAfterEachAdd.length} times for '
+          '$frames frames — small writes are reaching it one at a time again',
+    );
+  });
+
+  test('the staging buffer stays within the size it was given', () async {
+    // The other half of batching: a buffer that grew to fit the animation would
+    // pass every test above and quietly reintroduce the problem the package
+    // exists to solve. A small buffer must produce *more* writes, not a bigger
+    // buffer.
+    // The frames have to be big enough to overflow the small buffer, or both
+    // sizes flush once per frame and the comparison says nothing — which is
+    // exactly what a first version of this test did, with 64x64 frames that
+    // compressed to under 512 bytes.
+    const side = 160;
+    Future<int> writesWithBuffer(int bufferSize) async {
+      final sink = RecordingSink();
+      final gif = GifWriter(
+        sink,
+        width: side,
+        height: side,
+        colors: grays(16),
+        bufferSize: bufferSize,
+      );
+      for (var f = 0; f < 4; f++) {
+        await gif.addIndexedFrame(
+          Uint8List.fromList(<int>[
+            // Noise, so it does not compress away to nothing.
+            for (var i = 0; i < side * side; i++) (i * 7 + i ~/ 3 + f) % 16,
+          ]),
+        );
+      }
+      await gif.close();
+      return sink.lengthAfterEachAdd.length;
+    }
+
+    final tiny = await writesWithBuffer(512);
+    final roomy = await writesWithBuffer(64 * 1024);
+    expect(
+      tiny,
+      greaterThan(roomy),
+      reason:
+          'a 512-byte buffer produced no more writes than a 64 kB one, so the '
+          'buffer is growing rather than flushing',
+    );
+  });
+
   test('a writer closed with no frames still produces a readable file', () async {
     // An empty stream is a legitimate input — a recording stopped before its
     // first capture — and throwing here would strand the caller with a

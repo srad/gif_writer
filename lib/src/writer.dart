@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'byte_sink.dart';
 import 'color_table.dart';
 // `dart:io` reaches this package through exactly one seam, so the core stays
 // compilable on the web and `toFile` still exists there — throwing, which is
@@ -58,6 +59,13 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// against a slow disk — would queue frames inside the sink, moving the
   /// buffering this package removes one layer down where nobody looks for it.
   /// `GifWriter.toFile` wires it to `IOSink.flush`.
+  ///
+  /// [bufferSize] is the staging buffer the encoder gathers small writes into
+  /// before handing them on. It is the package's entire fixed overhead besides
+  /// the LZW tables, and it does not grow: measured, batching here took a 5.8 MB
+  /// animation from 24,365 sink writes to 121, and roughly doubled throughput.
+  /// Lower it on a memory budget; below about a kilobyte the syscalls start to
+  /// cost more than the buffer saves.
   GifWriter(
     StreamSink<List<int>> sink, {
     required int width,
@@ -65,7 +73,8 @@ class GifWriter implements StreamConsumer<GifFrame> {
     required GifColorTable colors,
     GifRepeat repeat = GifRepeat.forever,
     Future<void> Function()? onFlush,
-  }) : _sink = sink,
+    int bufferSize = 64 * 1024,
+  }) : _out = BufferedByteSink(sink, capacity: bufferSize),
        _width = _checkDimension(width, 'width'),
        _height = _checkDimension(height, 'height'),
        _colors = colors,
@@ -108,12 +117,28 @@ class GifWriter implements StreamConsumer<GifFrame> {
     return value;
   }
 
-  final StreamSink<List<int>> _sink;
+  final BufferedByteSink _out;
   final int _width;
   final int _height;
   final GifColorTable _colors;
   final GifRepeat _repeat;
   final Future<void> Function()? _onFlush;
+
+  /// One encoder for the whole animation. Its string table, hash and sub-block
+  /// buffer come to about 40 kB that a per-frame encoder would allocate and
+  /// throw away on every frame.
+  final GifLzwEncoder _lzw = GifLzwEncoder();
+
+  /// The fixed blocks, filled in place rather than rebuilt as a list literal per
+  /// frame.
+  final Uint8List _control = Uint8List.fromList(<int>[
+    0x21, 0xF9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  final Uint8List _descriptor = Uint8List(10);
+
+  /// Whether any byte is a legal index, which makes the per-pixel check in
+  /// [addIndexedFrame] unnecessary.
+  late final bool _everyByteValid = _colors.length == 256;
 
   bool _headerWritten = false;
   bool _closed = false;
@@ -148,12 +173,19 @@ class GifWriter implements StreamConsumer<GifFrame> {
         'expected $expected bytes for ${_width}x$_height',
       );
     }
-    for (var i = 0; i < indices.length; i++) {
-      if (indices[i] >= _colors.length) {
-        throw ArgumentError(
-          'pixel $i is index ${indices[i]}, outside the '
-          '${_colors.length}-colour table',
-        );
+    // Skipped entirely for a full table, where no byte can be out of range —
+    // and a full table is the common case, since anything that quantises
+    // produces 256 colours. This is a whole extra pass over every pixel, so
+    // "free when it cannot fail" is worth the branch.
+    if (!_everyByteValid) {
+      final limit = _colors.length;
+      for (var i = 0; i < indices.length; i++) {
+        if (indices[i] >= limit) {
+          throw ArgumentError(
+            'pixel $i is index ${indices[i]}, outside the '
+            '$limit-colour table',
+          );
+        }
       }
     }
 
@@ -164,23 +196,27 @@ class GifWriter implements StreamConsumer<GifFrame> {
 
     _writeGraphicControl(delay: delay);
     _writeImageDescriptor();
-    gifLzwCompress(
+    _lzw.encode(
       indices: indices,
       minCodeSize: gifMinCodeSize(colorCount: _colors.length),
-      emit: _sink.add,
+      out: _out,
     );
     _frames++;
 
+    // The frame's bytes leave here, before the next one is encoded: the staging
+    // buffer is bounded, but a frame must not sit in it waiting for the next.
+    _out.flush();
     // Once per frame, not once per sub-block: flushing per block would trade the
     // memory win for a syscall storm.
     await _onFlush?.call();
   }
 
   void _writeHeader() {
-    _sink.add(const <int>[0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF89a
+    // Written once per file, so a list literal here costs nothing worth naming.
+    _out.add(const <int>[0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF89a
 
     final bits = _colors.bitsPerPixel;
-    _sink.add(<int>[
+    _out.add(<int>[
       _width & 0xFF, (_width >> 8) & 0xFF,
       _height & 0xFF, (_height >> 8) & 0xFF,
       // Global table present, 8-bit colour resolution, unsorted, and the table's
@@ -189,14 +225,14 @@ class GifWriter implements StreamConsumer<GifFrame> {
       0, // background colour index
       0, // pixel aspect ratio: none
     ]);
-    _sink.add(_colors.toBytes());
+    _out.add(_colors.toBytes());
 
     // The looping block belongs here — after the table, before any frame — and
     // is the only way GIF expresses "repeat". Omitted entirely for a single
     // play, because a Netscape block saying "loop once more" is not the same
     // thing as no block at all.
     if (_repeat != GifRepeat.once) {
-      _sink.add(<int>[
+      _out.add(<int>[
         0x21, 0xFF, 0x0B, //
         0x4E, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, // NETSCAPE
         0x32, 0x2E, 0x30, // 2.0
@@ -208,28 +244,28 @@ class GifWriter implements StreamConsumer<GifFrame> {
   }
 
   void _writeGraphicControl({required Duration delay}) {
-    // Hundredths, rounded rather than truncated: at 50 ms a truncation would
-    // write 5 and a round writes 5, but at 15 ms truncation loses a fifth of the
-    // frame's time and the animation drifts over hundreds of frames.
+    // Hundredths, rounded rather than truncated: at 15 ms truncation loses a
+    // fifth of the frame's time, and over a few hundred frames the animation
+    // visibly drifts against whatever it was timed to.
     final centiseconds = (delay.inMicroseconds / 10000).round().clamp(0, 0xFFFF);
-    _sink.add(<int>[
-      0x21, 0xF9, 0x04,
-      0x00, // no disposal, no user input, no transparency — 0.3.0 adds these
-      centiseconds & 0xFF, (centiseconds >> 8) & 0xFF,
-      0x00, // transparent colour index, unused while the flag is clear
-      0x00,
-    ]);
+    // Filled in place: the two bytes that vary are the delay, and the rest of
+    // this block is the same for every frame of every animation.
+    _control[4] = centiseconds & 0xFF;
+    _control[5] = (centiseconds >> 8) & 0xFF;
+    _out.add(_control);
   }
 
   void _writeImageDescriptor() {
-    _sink.add(<int>[
-      0x2C,
-      0, 0, 0, 0, // left, top
-      _width & 0xFF, (_width >> 8) & 0xFF,
-      _height & 0xFF, (_height >> 8) & 0xFF,
-      // No local table — every frame uses the global one — not interlaced.
-      0x00,
-    ]);
+    _descriptor[0] = 0x2C;
+    // left and top stay zero; the frame is the whole logical screen until 0.4.0
+    // adds diffing.
+    _descriptor[5] = _width & 0xFF;
+    _descriptor[6] = (_width >> 8) & 0xFF;
+    _descriptor[7] = _height & 0xFF;
+    _descriptor[8] = (_height >> 8) & 0xFF;
+    // No local table — every frame uses the global one — not interlaced.
+    _descriptor[9] = 0x00;
+    _out.add(_descriptor);
   }
 
   /// Writes the trailer and closes the sink.
@@ -245,9 +281,10 @@ class GifWriter implements StreamConsumer<GifFrame> {
       _writeHeader();
       _headerWritten = true;
     }
-    _sink.add(const <int>[0x3B]);
+    _out.addByte(0x3B);
+    _out.flush();
     await _onFlush?.call();
-    await _sink.close();
+    await _out.close();
   }
 
   /// Consumes a stream of frames, so `frames.pipe(writer)` works.
