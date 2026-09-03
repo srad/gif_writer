@@ -206,7 +206,7 @@ void main() {
       return sink.lengthAfterEachAdd.length;
     }
 
-    final tiny = await writesWithBuffer(512);
+    final tiny = await writesWithBuffer(GifWriter.minBufferSize);
     final roomy = await writesWithBuffer(64 * 1024);
     expect(
       tiny,

@@ -2,44 +2,56 @@ import 'dart:typed_data';
 
 import 'byte_sink.dart';
 
-/// The largest a GIF sub-block may be. The length prefix is one byte, and 0
-/// means "end of the block stream", so 255 is the ceiling.
-const int _maxSubBlock = 255;
-
 /// GIF's LZW code width never exceeds twelve bits; at 4096 codes the dictionary
 /// is reset rather than widened.
 const int _maxCodeWidth = 12;
 const int _maxCodes = 1 << _maxCodeWidth;
 
-/// Slots in the string table's hash. A prime comfortably above 4096 keeps the
-/// load factor under 0.82, where open addressing still probes about twice on
-/// average. The number is the one the original UNIX `compress` used, for the
-/// same reason.
-const int _hashSize = 5003;
+/// Slots in the string table's hash.
+///
+/// **Prime, and deliberately far larger than the 4096 codes it holds.** Both
+/// halves were measured, and both are easy to get wrong:
+///
+/// - *Prime*, because the probe below steps by a key-dependent displacement. That
+///   only visits every slot if the step is coprime to the size, which a power of
+///   two is not. Switching to 8192 with linear probing instead — the obvious
+///   "round number is faster" change — clustered so badly it ran **36 times
+///   slower**, 0.7 Mpx/s against 26.
+/// - *Large*, because the classic 5003 the original UNIX `compress` used puts the
+///   load factor at 0.82, where open addressing probes several times per pixel.
+///   At 9973 it is 0.41 and throughput rose about 20%. Past this it plateaus and
+///   then falls: 12983 and 16381 measured no better, and 24593 measured worse,
+///   because clearing a bigger table between frames costs more than the probes it
+///   saves.
+///
+/// The cost is 78 kB of `Int32List`, allocated once for the whole animation.
+const int _hashSize = 9973;
 
 /// Compresses frames into GIF image-data sections.
 ///
 /// Reused across every frame of an animation, which is the point: the string
-/// table, the sub-block buffer and the hash are allocated once and cleared
+/// table and the hash are allocated once and cleared
 /// between frames. Allocating them per frame — as a straightforward
 /// implementation does — costs 40 kB of garbage per frame and shows up as
 /// collection pauses in the middle of a capture.
 final class GifLzwEncoder {
   GifLzwEncoder()
     : _hashKeys = Int32List(_hashSize),
-      _hashCodes = Int32List(_hashSize),
-      _block = Uint8List(_maxSubBlock);
+      _hashCodes = Int32List(_hashSize);
 
   /// `key + 1` per slot, so a plain zero means "empty" and the table can be
   /// cleared with a single `fillRange` rather than a loop of sentinels.
   final Int32List _hashKeys;
   final Int32List _hashCodes;
 
-  /// The sub-block under construction. Never handed out — [BufferedByteSink]
-  /// copies — so it is safe to reuse for the whole animation.
-  final Uint8List _block;
-
-  int _blockLength = 0;
+  /// Where the sub-block being filled starts in the staging buffer.
+  ///
+  /// The bytes go **straight into the sink's buffer** rather than through a
+  /// scratch array of our own: the length byte is reserved first and patched
+  /// once the block is done. Building each block separately and copying it over
+  /// costs a full `memcpy` of the entire compressed output, which for a 5.8 MB
+  /// animation is 5.8 MB of pointless copying.
+  int _blockStart = -1;
   int _bitBuffer = 0;
   int _bitCount = 0;
   late BufferedByteSink _out;
@@ -64,7 +76,7 @@ final class GifLzwEncoder {
     _minCodeSize = minCodeSize;
     _clearCode = 1 << minCodeSize;
     _endCode = _clearCode + 1;
-    _blockLength = 0;
+    _blockStart = -1;
     _bitBuffer = 0;
     _bitCount = 0;
 
@@ -134,17 +146,25 @@ final class GifLzwEncoder {
   }
 
   void _flushBlock() {
-    if (_blockLength == 0) return;
-    _out.addByte(_blockLength);
-    // A view, not a copy: `add` copies into its own buffer, so nothing outlives
-    // this call and the 255 bytes are never allocated again.
-    _out.add(Uint8List.sublistView(_block, 0, _blockLength));
-    _blockLength = 0;
+    if (_blockStart < 0) return;
+    if (_out.length - _blockStart - 1 == 0) {
+      // Nothing was written into it. The reserved length byte would encode an
+      // empty block, which is the *terminator* — writing one here would end the
+      // image early and truncate the frame.
+      _out.rewindTo(_blockStart);
+    } else {
+      _out.endBlock(_blockStart);
+    }
+    _blockStart = -1;
   }
 
   void _pushByte(int byte) {
-    _block[_blockLength++] = byte;
-    if (_blockLength == _maxSubBlock) _flushBlock();
+    if (_blockStart < 0) _blockStart = _out.beginBlock();
+    _out.addByte(byte);
+    if (_out.blockIsFull(_blockStart)) {
+      _out.endBlock(_blockStart);
+      _blockStart = -1;
+    }
   }
 
   /// Codes are packed least-significant-bit first. The buffer holds at most

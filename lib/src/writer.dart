@@ -20,9 +20,15 @@ class GifRepeat {
   /// Loop endlessly, which is what almost every animated GIF does.
   static const GifRepeat forever = GifRepeat._(0);
 
-  /// Play [times] times in total. Values below one are treated as [once].
+  /// Play [times] times in total. One or fewer is [once].
+  ///
+  /// **The boundary is `<= 1`, not `< 1`.** The stored value is the number of
+  /// *additional* plays, so `times(1)` naively becomes `_(0)` — and zero is the
+  /// code for **forever**. Asking for a single play produced an endless loop,
+  /// and nothing about the file looked wrong: every pixel decoded perfectly and
+  /// it simply never stopped.
   factory GifRepeat.times(int times) =>
-      times < 1 ? once : GifRepeat._(times - 1);
+      times <= 1 ? once : GifRepeat._(times - 1);
 
   /// What goes in the Netscape block: zero means forever, otherwise the number
   /// of *additional* plays.
@@ -63,7 +69,8 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// [bufferSize] is the staging buffer the encoder gathers small writes into
   /// before handing them on. It is the package's entire fixed overhead besides
   /// the LZW tables, and it does not grow: measured, batching here took a 5.8 MB
-  /// animation from 24,365 sink writes to 121, and roughly doubled throughput.
+  /// animation from 24,365 sink writes to 121, and lifted throughput by about
+  /// half.
   /// Lower it on a memory budget; below about a kilobyte the syscalls start to
   /// cost more than the buffer saves.
   GifWriter(
@@ -110,6 +117,15 @@ class GifWriter implements StreamConsumer<GifFrame> {
     );
   }
 
+  /// The smallest [bufferSize] accepted.
+  ///
+  /// A GIF sub-block is a length byte plus up to 255 of data, written straight
+  /// into the staging buffer and patched afterwards. A buffer that could fill
+  /// mid-block would leave that patch writing to a stale position — a corrupt
+  /// file with nothing thrown — so anything smaller is refused rather than
+  /// silently mishandled.
+  static const int minBufferSize = BufferedByteSink.minCapacity;
+
   static int _checkDimension(int value, String name) {
     if (value < 1 || value > 0xFFFF) {
       throw ArgumentError.value(value, name, 'must be 1 to 65535');
@@ -124,9 +140,8 @@ class GifWriter implements StreamConsumer<GifFrame> {
   final GifRepeat _repeat;
   final Future<void> Function()? _onFlush;
 
-  /// One encoder for the whole animation. Its string table, hash and sub-block
-  /// buffer come to about 40 kB that a per-frame encoder would allocate and
-  /// throw away on every frame.
+  /// One encoder for the whole animation. Its hash tables come to about 78 kB
+  /// that a per-frame encoder would allocate and throw away on every frame.
   final GifLzwEncoder _lzw = GifLzwEncoder();
 
   /// The fixed blocks, filled in place rather than rebuilt as a list literal per
@@ -179,12 +194,27 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // "free when it cannot fail" is worth the branch.
     if (!_everyByteValid) {
       final limit = _colors.length;
+      // One OR per pixel, then a single comparison — rather than a compare and a
+      // branch per pixel, which measured as most of the gap against an encoder
+      // that does not check at all.
+      //
+      // The OR can only *overstate* the maximum: bits from different pixels
+      // combine, so 1 and 2 look like 3. That is why a positive result is not
+      // the error — it only buys the precise pass below, which is the one that
+      // throws. Cannot produce a false negative, because a byte at or above the
+      // limit always sets a bit that survives the OR.
+      var combined = 0;
       for (var i = 0; i < indices.length; i++) {
-        if (indices[i] >= limit) {
-          throw ArgumentError(
-            'pixel $i is index ${indices[i]}, outside the '
-            '$limit-colour table',
-          );
+        combined |= indices[i];
+      }
+      if (combined >= limit) {
+        for (var i = 0; i < indices.length; i++) {
+          if (indices[i] >= limit) {
+            throw ArgumentError(
+              'pixel $i is index ${indices[i]}, outside the '
+              '$limit-colour table',
+            );
+          }
         }
       }
     }
