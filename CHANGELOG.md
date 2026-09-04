@@ -1,3 +1,33 @@
+## 0.3.1
+
+A performance release. The LZW hash table is larger, and the benchmarks that justify it now run the
+way a release build does. **Indexed output is byte-identical to 0.3.0** — what changed is how fast the
+bytes are produced and how the encoder is measured, not the bytes themselves.
+
+### Changed
+
+- **The LZW string table is now 32768 slots, up from 16384.** Re-measured AOT across four sizes, the
+  larger table wins the two workloads that matter — noise (LZW's worst case) and photographic content
+  — now that retiring the dictionary by an epoch counter, rather than zeroing it, made clearing a
+  bigger table nearly free. 65536 was measured too and loses the noise win back to cache pressure.
+  Fixed overhead for the indexed path rises from ~192 kB to ~320 kB (a 256 kB table against 128 kB),
+  so held memory goes from 0.19 MB to 0.31 MB — still **flat at any animation length**, which is the
+  property that matters.
+- **`tool/benchmark.dart` and `tool/compare.dart` report AOT.** They are built with `dart compile exe`
+  rather than run under the JIT, whose numbers swung ±13% run to run — wide enough to hide a real
+  change, and not how a Flutter release build runs this package. `dart run` stays documented as a
+  quick path. The README's throughput, comparison and memory figures are regenerated as AOT medians.
+
+### Fixed
+
+- The memory chart's "held" label was a hardcoded literal reading `0.06 MB` regardless of the value it
+  sat beside; it now derives from that value.
+
+### Notes
+
+- Output bytes are unchanged: a hash table's size affects only how quickly codes are found, never
+  which codes are emitted. The round-trip suite passes unchanged.
+
 ## 0.3.0
 
 The encoder now chooses a palette for you. Someone holding a photo or a video frame has RGB and no

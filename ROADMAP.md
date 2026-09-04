@@ -37,6 +37,17 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [x] A table-less writer closed with no frames writes a valid header with **no** global colour table,
       keeping the zero-frame guarantee even when nothing was ever derived.
 
+### 0.3.1
+- [x] **LZW hash table enlarged to 32768.** Re-measured AOT across 8192 / 16384 / 32768 / 65536
+      (separate `dart compile exe` builds, interleaved): 32768 wins noise and photo now that
+      epoch-stamped clearing made a bigger table nearly free; 65536 loses the noise win to cache
+      pressure. Indexed output byte-identical; held memory 0.19 → 0.31 MB, still flat at any length.
+- [x] **Benchmarks report AOT.** `tool/benchmark.dart` and `tool/compare.dart` build with
+      `dart compile exe` (JIT kept as a documented quick path); the README's throughput, comparison
+      and memory numbers are regenerated as AOT medians. Fixed a stale hardcoded `0.06 MB` label in
+      the memory chart, blind to the value beside it (the deeper `compare.dart` `peakHeld` fix is
+      still open below).
+
 ### Not yet tagged
 - [ ] **`v0.2.1` has no git tag.** `0.2.1` is published on pub.dev and `main` is at the right commit,
       but the tag list stops at `v0.2.0`: `git tag v0.2.1 <commit> && git push origin v0.2.1`.
@@ -50,24 +61,6 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
       The README asserts "everything runs on the VM and under Chrome" with nothing enforcing it.
       This is the highest-value open item: every guard in this package is only as good as something
       running it.
-- [ ] **Re-measure `_hashSize`.** The 8192 / 16384 / 32768 table in `lib/src/lzw.dart` was measured
-      when every reset zeroed the table. That cost is gone, so the comparison that chose 16384 no
-      longer holds and a larger table may now win — clearing is nearly free between frames. The
-      doc-comment and the README both say so; the numbers still need redoing. Use the AOT method
-      below, or the answer will be noise.
-- [ ] **Benchmark methodology: report AOT.** `tool/benchmark.dart` and `tool/compare.dart` run under
-      the JIT. Measured during 0.2.1: the same code, unchanged, swung 53.3 to 63.0 Mpx/s on noise
-      across runs minutes apart — ±13%, wide enough to hide a real 25% change. Three separate JIT
-      A/B designs disagreed with each other; three separate AOT designs agreed to within a few
-      points. AOT is also how a Flutter release build runs this package. Switch the tools to
-      `dart compile exe`, or report both.
-
-      Method that worked, for whoever does this next: build both variants as separate executables,
-      alternate them A-B-A-B with the order swapped each pair, and take medians. Do **not** toggle a
-      variant behind a `static bool` inside one process — that makes the JIT discard and rebuild the
-      optimised code on every switch, and each arm ends up paying for the other. That mistake
-      produced a `smooth` "gain" of 5-8% against a physical ceiling of 2.8%, which is how it was
-      caught.
 - [ ] **`compare.dart` measures the wrong memory.** `CountingSink.peakHeld` records the largest
       single handover to the sink, which is the staging buffer alone — it cannot see the 128 kB LZW
       table held just as permanently. That is where the README's wrong 0.06 MB came from. Report the

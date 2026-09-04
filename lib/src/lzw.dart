@@ -21,7 +21,9 @@ const int _maxCodes = 1 << _maxCodeWidth;
 /// - **9973, prime, addressed with `key % _hashSize`.** Correct, and far better
 ///   than the broken hash it replaced, but a division per pixel is expensive
 ///   exactly where runs are long and the first probe already succeeds: it
-///   measured 86.8 Mpx/s on a gradient against 142.9 for what is here now.
+///   measured 86.8 Mpx/s on a gradient against the 142.9 of the power-of-two
+///   table that replaced it — both under the JIT of the day, before the sizing
+///   below was redone AOT.
 ///
 /// What wins is a power of two with a *mixing* hash and an **odd** displacement.
 /// Odd is coprime to a power of two, so the probe still visits every slot — the
@@ -29,25 +31,32 @@ const int _maxCodes = 1 << _maxCodeWidth;
 ///
 /// *Large*, because the classic 5003 the original UNIX `compress` used puts the
 /// load factor at 0.82, where open addressing probes several times per pixel; at
-/// 16384 it is 0.25. This is the top of the curve, and both neighbours were
-/// measured on the three benchmark workloads:
+/// 32768 it is 0.125. The four powers of two around it were measured together,
+/// AOT and interleaved, on the three benchmark workloads:
 ///
 /// | slots | memory | noise | photo | gradient |
 /// | ---: | ---: | ---: | ---: | ---: |
-/// | 8192 | 64 kB | 51.6 | 75.4 | 132.0 |
-/// | **16384** | **128 kB** | **59.7** | **89.5** | **142.9** |
-/// | 32768 | 256 kB | 60.9 | 88.2 | 137.0 |
+/// | 8192 | 64 kB | 51.3 | 76.3 | 152.7 |
+/// | 16384 | 128 kB | 59.5 | 88.1 | 158.1 |
+/// | **32768** | **256 kB** | **64.4** | **94.1** | **156.3** |
+/// | 65536 | 512 kB | 63.9 | 93.3 | 170.4 |
 ///
-/// Those three rows were measured when every reset **zeroed** this table, which
-/// is why 32768 looked like a wash: doubling the table doubled a clear that ran
-/// ten to seventeen times a frame, cancelling the shorter probes. Epoch stamping
-/// (see [_hashKeys]) removed that cost, so the comparison no longer holds and
-/// **the sizes want re-measuring** — a bigger table is now nearly free between
-/// frames and may well win.
+/// **32768 wins the two workloads that matter, and 65536 does not.** Noise is
+/// LZW's worst case and the truest test of the hash: it peaks at 32768 and falls
+/// back at 65536, where 512 kB of table no longer sits comfortably in cache.
+/// Photo, representative content, peaks at 32768 too. Only the gradient prefers a
+/// larger table — and the gradient is best case, long runs that barely touch the
+/// hash at all, so its column is the noisiest here and the least worth sizing for.
 ///
-/// 128 kB of `Int32List` is the current price, allocated once for the whole
-/// animation rather than per frame.
-const int _hashSize = 16384;
+/// This overturns the earlier finding that 16384 was the top of the curve. That
+/// was measured when every reset **zeroed** the table, so doubling the table
+/// doubled a clear that ran ten to seventeen times a frame and cancelled the
+/// shorter probes. Epoch stamping (see [_hashKeys]) made clearing nearly free,
+/// and once it is, 32768 wins outright. The only remaining cost of the larger
+/// table is its 256 kB of `Int32List`, paid once for the whole animation rather
+/// than per frame; the package's held memory rises from 0.19 MB to 0.31 MB with
+/// it, and stays flat at any length.
+const int _hashSize = 32768;
 const int _hashMask = _hashSize - 1;
 
 /// Where the epoch sits in a slot, above the 21 bits `key + 1` needs.
@@ -145,13 +154,13 @@ final class GifLzwEncoder {
         // quietly broken for small palettes: with 32 colours `pixel << 4` never
         // exceeds 496, so the xor never exceeds 4095 and **only 4096 slots can
         // ever be addressed, whatever the table's size**. The load factor is
-        // then 1.0 rather than 0.25 and the probe below walks a long way.
+        // then 1.0 rather than 0.125 and the probe below walks a long way.
         //
         // Shifting the key down by six folds `pixel` — which lives in bits 12
         // and up — into the low bits alongside `prefix`, so every slot is
         // reachable at every palette size. Measured on the three benchmark
-        // workloads, against that classic hash: 27.2 to 59.7 Mpx/s on noise,
-        // and 135.9 to 142.9 on a gradient.
+        // workloads, against that classic hash, both under the JIT of the day:
+        // 27.2 to 59.7 Mpx/s on noise, and 135.9 to 142.9 on a gradient.
         var slot = (key ^ (key >> 6)) & _hashMask;
         // Open addressing with a key-dependent displacement, which beats linear
         // probing badly here: consecutive pixels share a prefix, so keys arrive

@@ -7,7 +7,10 @@
 /// the comparison would say nothing. Both outputs are decoded and checked
 /// pixel-for-pixel before a single timing is printed.
 ///
-/// Run it yourself: `dart run tool/compare.dart`.
+/// Run it with `dart run tool/compare.dart`, or — because the JIT's numbers
+/// wander — build it first with `dart compile exe` and run that, which is how a
+/// Flutter release build runs this package and the mode `ROADMAP.md` asks these
+/// numbers be reported in.
 library;
 
 import 'dart:async';

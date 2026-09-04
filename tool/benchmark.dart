@@ -7,9 +7,12 @@ import 'sample_image.dart';
 
 /// Throughput of the encoder, measured rather than assumed.
 ///
-/// Run with `dart run tool/benchmark.dart`. Compare candidates **inside one
-/// run**: absolute figures move with the machine's thermal state and with what
-/// else it is doing, so only ratios measured together mean anything.
+/// Run it with `dart run tool/benchmark.dart` for a quick look, or — because the
+/// JIT's numbers wander — build it with `dart compile exe` and run that, which is
+/// how a Flutter release build runs this package and is the mode `ROADMAP.md`
+/// asks these numbers be reported in. Compare candidates **inside one run**:
+/// absolute figures move with the machine's thermal state and with what else it
+/// is doing, so only ratios measured together mean anything.
 ///
 /// A sink that counts and discards, so the disk is not being benchmarked.
 final class CountingSink implements StreamSink<List<int>> {
@@ -49,8 +52,9 @@ Future<void> main() async {
   final photo = SampleImage.photo(side: size, colours: colours);
 
   Future<void> run(String name, Uint8List frame) async {
-    // One untimed pass first: the JIT should be warm before the clock starts, or
-    // the first candidate measured always looks slowest.
+    // One untimed pass first: a cold run pays for cold caches and the CPU's
+    // frequency ramp, so the first candidate measured always looks slowest.
+    // (Under AOT there is no JIT to warm — this pass still matters.)
     for (var warm = 0; warm < 2; warm++) {
       final sink = CountingSink();
       final gif = GifWriter(sink, width: size, height: size, colors: table);

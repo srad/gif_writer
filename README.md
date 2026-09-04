@@ -34,17 +34,17 @@ interleaved trials**, and every gap below is wider than the run-to-run spread of
 
 | workload | gif_writer | `package:image` | | gif_writer | `package:image` | |
 | :-- | --: | --: | :-- | --: | --: | :-- |
-| photo · 32 colours | **82.2 Mpx/s** | 48.1 Mpx/s | **+71%** | **1.13 MB** | 1.21 MB | **−6.4%** |
-| photo · 256 colours | **53.7 Mpx/s** | 35.8 Mpx/s | **+50%** | **3.34 MB** | 3.39 MB | **−1.3%** |
-| noise · 32 colours | **56.1 Mpx/s** | 30.2 Mpx/s | **+86%** | **2.91 MB** | 3.04 MB | **−4.3%** |
-| noise · 256 colours | **46.5 Mpx/s** | 29.2 Mpx/s | **+60%** | **5.15 MB** | 5.19 MB | **−0.8%** |
+| photo · 32 colours | **95.1 Mpx/s** | 48.3 Mpx/s | **+97%** | **1.13 MB** | 1.21 MB | **−6.4%** |
+| photo · 256 colours | **58.8 Mpx/s** | 35.9 Mpx/s | **+64%** | **3.34 MB** | 3.39 MB | **−1.3%** |
+| noise · 32 colours | **68.4 Mpx/s** | 28.2 Mpx/s | **+143%** | **2.91 MB** | 3.04 MB | **−4.3%** |
+| noise · 256 colours | **52.1 Mpx/s** | 31.0 Mpx/s | **+68%** | **5.15 MB** | 5.19 MB | **−0.8%** |
 | | *throughput* | | | *file written* | | |
 
-**1.5–1.9× faster, and the file is smaller every time.** Speed alone would not settle it — an encoder
+**1.6–2.4× faster, and the file is smaller every time.** Speed alone would not settle it — an encoder
 can always go faster by compressing worse — so the output size sits in the table beside it.
 
 The percentages are from one run on one machine, and they move: a second run of the same tool put
-noise · 32 at +95% and photo · 256 at +46%. What is stable across runs is the direction, the rough
+noise · 32 at +147% and photo · 256 at +66%. What is stable across runs is the direction, the rough
 size of the gap, and the file sizes, which are **byte-identical every time** because compression is
 deterministic. Treat the throughput column as "comfortably faster", not as four significant figures —
 and run it on your own hardware, which is the only number that describes your hardware.
@@ -53,11 +53,11 @@ And the number that is not a percentage:
 
 | | held in memory, 60 frames | held in memory, 1000 frames |
 | :-- | --: | --: |
-| **gif_writer** | **0.19 MB** | **0.19 MB** |
+| **gif_writer** | **0.31 MB** | **0.31 MB** |
 | `package:image` | 5.19 MB | ~87 MB |
 
-That 0.19 MB is the whole fixed overhead of the indexed path — a 64 kB staging
-buffer plus the 128 kB LZW string table — and it is the same number as
+That 0.31 MB is the whole fixed overhead of the indexed path — a 64 kB staging
+buffer plus the 256 kB LZW string table — and it is the same number as
 [Where the speed comes from](#where-the-speed-comes-from) below. Neither column
 counts the caller's own frame buffer, which both encoders need.
 
@@ -72,9 +72,10 @@ counts the caller's own frame buffer, which both encoders need.
 staging buffer. One side scales with the animation; the other does not — and that is the whole reason
 this package exists.
 
-Reproduce the numbers with [`dart run tool/compare.dart`](tool/compare.dart) — it decodes **both**
-outputs and checks every pixel against the input before reporting a single timing, and refuses to
-report at all if either encoder got the picture wrong. Redraw the charts with
+Reproduce the numbers by building [`tool/compare.dart`](tool/compare.dart) with `dart compile exe`
+and running that — AOT, because the JIT's numbers wander (see *A note on measuring this yourself*,
+below). It decodes **both** outputs and checks every pixel against the input before reporting a single
+timing, and refuses to report at all if either encoder got the picture wrong. Redraw the charts with
 [`python tool/charts.py`](tool/charts.py).
 
 ## The problem
@@ -215,7 +216,8 @@ dither's error rows are allocated on the **first RGB frame** and never before it
 
 ### Against `package:image`
 
-60 frames of 256×256, run with [`tool/compare.dart`](tool/compare.dart). Both encoders are given
+60 frames of 256×256, from [`tool/compare.dart`](tool/compare.dart) built with `dart compile exe`
+(AOT). Both encoders are given
 frames that **already carry a palette**, so neither quantises — otherwise `image` would be paying for
 NeuQuant this package does not implement, and the comparison would say nothing. The tool decodes both
 outputs and checks them pixel-for-pixel against the input before printing a single number; it refuses
@@ -239,13 +241,14 @@ encoder doing extra work would be worthless.
 
 ### On its own
 
-120 frames of 256×256 at 32 colours, [`tool/benchmark.dart`](tool/benchmark.dart):
+120 frames of 256×256 at 32 colours, [`tool/benchmark.dart`](tool/benchmark.dart) built with
+`dart compile exe` (AOT):
 
 | workload | throughput | range | output | sink writes |
 | :-- | ---: | ---: | ---: | ---: |
-| noise — worst case for LZW | **59.7 Mpx/s** | 54.0 – 61.6 | 5.82 MB | 121 |
-| photo — representative content | **89.5 Mpx/s** | 86.6 – 92.2 | 2.26 MB | 121 |
-| smooth gradient — best case | **142.9 Mpx/s** | 133.8 – 146.8 | 0.30 MB | 121 |
+| noise — worst case for LZW | **64.4 Mpx/s** | 50.3 – 67.2 | 5.82 MB | 121 |
+| photo — representative content | **94.1 Mpx/s** | 81.3 – 96.8 | 2.26 MB | 121 |
+| smooth gradient — best case | **156.3 Mpx/s** | 150.3 – 166.7 | 0.30 MB | 121 |
 
 Where it started, before any of the tuning below: 12.4 Mpx/s on noise and 36.6 on the gradient.
 
@@ -265,9 +268,9 @@ first RGB frame:
 
 | path | fixed overhead |
 | :-- | --: |
-| `addIndexedFrame` | **~192 kB** — a 64 kB staging buffer plus a 128 kB LZW string table |
-| `addRgbFrame`, ordered dither | ~288 kB — plus the 96 kB inverse colour cube |
-| `addRgbFrame`, error diffusion | ~288 kB + `12 × width` for two rows of error |
+| `addIndexedFrame` | **~320 kB** — a 64 kB staging buffer plus a 256 kB LZW string table |
+| `addRgbFrame`, ordered dither | ~416 kB — plus the 96 kB inverse colour cube |
+| `addRgbFrame`, error diffusion | ~416 kB + `12 × width` for two rows of error |
 
 All of it allocated **once for the whole animation** rather than per frame.
 
@@ -276,7 +279,7 @@ All of it allocated **once for the whole animation** rather than per frame.
 | **Open-addressed `Int32List` string table** | not a `Map<int, int>`. Probed once per pixel, the hottest loop here. |
 | **A hash every key can address** | the classic `(pixel << 4) ^ prefix` from the C implementations is quietly broken below 256 colours: at 32 it never exceeds 4095, so most of the table is unreachable and the load factor is 1.0. Mixing the key properly took noise from 27.2 to 59.7 Mpx/s. |
 | **A power-of-two table with an odd step** | odd is coprime to a power of two, so the probe still reaches every slot — what a prime table buys, without a division per pixel. The prime it replaced measured 86.8 Mpx/s on a gradient against 142.9. |
-| **Sized at a 0.25 load factor** | the classic 5003 slots puts 4096 codes at 0.82 and probes several times per pixel. 16384 measured 59.7 Mpx/s on noise against 8192's 51.6. 32768 looked like a wash when it was tried — but that was measured while every reset zeroed the table, and the row below removed that cost, so the sizes want re-measuring. |
+| **Sized at a 0.125 load factor** | the classic 5003 slots puts 4096 codes at 0.82 and probes several times per pixel. Measured AOT and interleaved across four powers of two, 32768 takes both noise (64.4 Mpx/s against 16384's 59.5) and photo, while 65536 gives the noise win back to cache pressure. 32768 looked like a wash the last time it was tried — but only because every reset then zeroed the table, and the row below made clearing nearly free; once it is, the bigger table wins. It costs 256 kB against 16384's 128 kB, which is why held memory is now 0.31 MB rather than 0.19. |
 | **A string table retired, not cleared** | the dictionary resets far more often than once per frame — measured at 256×256, ten times a frame on noise at 32 colours and seventeen at 256 — and each reset used to zero 64 kB. Slots now carry a generation counter, so a reset is an increment and the table is genuinely cleared only every 1023 generations. Interleaved against 0.2.0, AOT: **+47% noise, +26% photo, +24% gradient**. Encoded bytes unchanged. |
 | **Batched sink writes** | passing every 255-byte sub-block straight through cost **24,365** sink calls for a 5.8 MB animation. Batching makes it 121. |
 | **Sub-blocks written in place** | the length byte is reserved and patched afterwards, so compressed bytes are never staged in a scratch array and copied — that copy is a `memcpy` of the entire output. |
@@ -290,12 +293,17 @@ long and the first probe already succeeds.
 
 There was a third — that enlarging the hash past 16384 cost more in clearing between frames than it
 saved in probing. That was true when it was measured and is not any more: the table is no longer
-cleared between frames, so the finding died with the cost that caused it.
+cleared between frames, so the finding died with the cost that caused it — and the table is now
+32768, the size that dead cost had been hiding.
 
 **A note on measuring this yourself.** Under the JIT these workloads swung ±13% run to run on
 identical code, wide enough to hide a real 25% change — so a before-and-after pair of `dart run`
 timings will not settle anything. Compare with `dart compile exe`, alternating the two builds, which
-is both stable and how a Flutter release build actually runs this package.
+is both stable and how a Flutter release build actually runs this package. The headline tables above
+are AOT medians, and the hash sizing was re-measured that way for this release. The remaining
+before/after figures in *Where the speed comes from* — the broken-hash and prime-table comparisons —
+are the original JIT experiments against variants no longer in the code, so a gradient reading
+156 Mpx/s up top and 142.9 in those notes is JIT-versus-AOT, not a contradiction.
 
 ## API
 

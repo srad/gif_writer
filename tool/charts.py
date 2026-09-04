@@ -21,12 +21,12 @@ OUT = "doc"
 # 60 frames of 256x256, both encoders given pre-palettised input.
 WORKLOADS = ["photo\n32 colours", "photo\n256 colours",
              "noise\n32 colours", "noise\n256 colours"]
-OURS = [82.2, 53.7, 56.1, 46.5]
-OURS_LOW = [70.8, 51.2, 53.0, 42.4]
-OURS_HIGH = [83.5, 54.0, 59.7, 49.6]
-THEIRS = [48.1, 35.8, 30.2, 29.2]
-THEIRS_LOW = [45.8, 34.4, 29.3, 27.6]
-THEIRS_HIGH = [50.0, 37.0, 30.9, 31.0]
+OURS = [95.1, 58.8, 68.4, 52.1]
+OURS_LOW = [78.4, 51.9, 57.4, 41.7]
+OURS_HIGH = [100.0, 61.3, 71.0, 55.7]
+THEIRS = [48.3, 35.9, 28.2, 31.0]
+THEIRS_LOW = [45.0, 34.0, 26.1, 29.6]
+THEIRS_HIGH = [49.8, 37.0, 29.0, 32.6]
 
 OURS_MB = [1.13, 3.34, 2.91, 5.15]
 THEIRS_MB = [1.21, 3.39, 3.04, 5.19]
@@ -35,18 +35,18 @@ THEIRS_MB = [1.21, 3.39, 3.04, 5.19]
 # **Not derived from the MB above**, which are rounded to two places: doing that
 # printed -6.6% next to a table saying -6.4%, and a chart that disagrees with the
 # text beside it is worse than no chart.
-FASTER_PCT = [71, 50, 86, 60]
+FASTER_PCT = [97, 64, 143, 68]
 SMALLER_PCT = [6.4, 1.3, 4.3, 0.8]
 
 # Held in memory. `package:image` returns the finished file, so what it holds is
 # the file; this holds a fixed staging buffer and LZW table whatever the length.
 #
 # **Not the 0.06 the sink reports.** `compare.dart` measures the largest single
-# handover, which is the 64 kB staging buffer alone — it cannot see the 128 kB
+# handover, which is the 64 kB staging buffer alone — it cannot see the 256 kB
 # LZW string table, which is held just as permanently. Quoting the sink's number
-# put 0.06 here against the README's own "~192 kB" three sections down.
+# put 0.06 here against the README's own "~320 kB" three sections down.
 MB_PER_FRAME = 5.19 / 60      # measured, noise at 256 colours
-OURS_HELD_MB = 0.19           # 64 kB staging + 128 kB LZW table
+OURS_HELD_MB = 0.31           # 64 kB staging + 256 kB LZW table
 
 BLUE = "#0175C2"
 GREY = "#9AA0A6"
@@ -167,7 +167,8 @@ def memory(theme):
                 xy=(1000, 1000 * MB_PER_FRAME), xytext=(-8, -2),
                 textcoords="offset points", ha="right", va="top",
                 fontsize=11, fontweight="bold", color=GREY)
-    ax.annotate("0.06 MB - flat", xy=(1000, OURS_HELD_MB), xytext=(-8, 8),
+    ax.annotate(f"{OURS_HELD_MB:.2f} MB - flat", xy=(1000, OURS_HELD_MB),
+                xytext=(-8, 8),
                 textcoords="offset points", ha="right", va="bottom",
                 fontsize=11, fontweight="bold", color=BLUE)
 
