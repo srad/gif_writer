@@ -120,6 +120,11 @@ ratios move a few points between runs; the file sizes are byte-identical every t
 And **0.06 MB held against 5.19 MB** at 60 frames — against ~87 MB at 1000, where this package still
 holds 0.06.
 
+> **Correction, 0.2.1:** that 0.06 MB was wrong. It is the largest single handover to the sink — the
+> 64 kB staging buffer — and it misses the 128 kB LZW string table, which is held just as
+> permanently. The real figure is **0.19 MB**, and it is still flat at any length. Left in place
+> rather than rewritten, so the record shows what was claimed at the time.
+
 What earns it, each measured rather than assumed:
 
 - An open-addressed `Int32List` string table rather than a `Map`, at a 0.25 load factor. The classic

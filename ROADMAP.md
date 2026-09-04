@@ -23,6 +23,14 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [x] `dart format` clean; SDK floor 3.7
 - [x] Held-memory figure reconciled at 0.19 MB across README and `tool/charts.py`
 - [x] Dead members removed (`BufferedByteSink.flushedBytes`, `ColorMapper.length`)
+- [x] `GifDither.blueNoise` takes its side from `blueNoiseSide` rather than a literal 64
+- [x] Corrected comments that described code which did not exist (`ColorMapper.colorAt`), the wrong
+      type (`Uint8List` for the blue-noise table, in the generator too), and the wrong symbol
+      (`compare.dart`'s file doc, which dartdoc bound to `CountingSink`)
+
+### Not yet tagged
+- [ ] **`v0.2.1` has no git tag.** `0.2.1` is published on pub.dev and `main` is at the right commit,
+      but the tag list stops at `v0.2.0`: `git tag v0.2.1 <commit> && git push origin v0.2.1`.
 
 ---
 
@@ -36,12 +44,21 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [ ] **Re-measure `_hashSize`.** The 8192 / 16384 / 32768 table in `lib/src/lzw.dart` was measured
       when every reset zeroed the table. That cost is gone, so the comparison that chose 16384 no
       longer holds and a larger table may now win — clearing is nearly free between frames. The
-      doc-comment says so; the numbers still need redoing.
+      doc-comment and the README both say so; the numbers still need redoing. Use the AOT method
+      below, or the answer will be noise.
 - [ ] **Benchmark methodology: report AOT.** `tool/benchmark.dart` and `tool/compare.dart` run under
-      the JIT, which swung ±13% run-to-run on the same code while this was being measured — wide
-      enough to hide a real 25% change. AOT (`dart compile exe`) was tight and reproducible, and is
-      also how a Flutter release build actually runs this package. Either switch the tools to AOT or
-      report both.
+      the JIT. Measured during 0.2.1: the same code, unchanged, swung 53.3 to 63.0 Mpx/s on noise
+      across runs minutes apart — ±13%, wide enough to hide a real 25% change. Three separate JIT
+      A/B designs disagreed with each other; three separate AOT designs agreed to within a few
+      points. AOT is also how a Flutter release build runs this package. Switch the tools to
+      `dart compile exe`, or report both.
+
+      Method that worked, for whoever does this next: build both variants as separate executables,
+      alternate them A-B-A-B with the order swapped each pair, and take medians. Do **not** toggle a
+      variant behind a `static bool` inside one process — that makes the JIT discard and rebuild the
+      optimised code on every switch, and each arm ends up paying for the other. That mistake
+      produced a `smooth` "gain" of 5-8% against a physical ceiling of 2.8%, which is how it was
+      caught.
 - [ ] **`compare.dart` measures the wrong memory.** `CountingSink.peakHeld` records the largest
       single handover to the sink, which is the staging buffer alone — it cannot see the 128 kB LZW
       table held just as permanently. That is where the README's wrong 0.06 MB came from. Report the

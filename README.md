@@ -260,17 +260,26 @@ All of it allocated **once for the whole animation** rather than per frame.
 | **Open-addressed `Int32List` string table** | not a `Map<int, int>`. Probed once per pixel, the hottest loop here. |
 | **A hash every key can address** | the classic `(pixel << 4) ^ prefix` from the C implementations is quietly broken below 256 colours: at 32 it never exceeds 4095, so most of the table is unreachable and the load factor is 1.0. Mixing the key properly took noise from 27.2 to 59.7 Mpx/s. |
 | **A power-of-two table with an odd step** | odd is coprime to a power of two, so the probe still reaches every slot — what a prime table buys, without a division per pixel. The prime it replaced measured 86.8 Mpx/s on a gradient against 142.9. |
-| **Sized at a 0.25 load factor** | the classic 5003 slots puts 4096 codes at 0.82 and probes several times per pixel. 16384 is the top of the curve: 8192 measured 51.6 Mpx/s on noise, 16384 59.7, and 32768 gains nothing for twice the memory. |
+| **Sized at a 0.25 load factor** | the classic 5003 slots puts 4096 codes at 0.82 and probes several times per pixel. 16384 measured 59.7 Mpx/s on noise against 8192's 51.6. 32768 looked like a wash when it was tried — but that was measured while every reset zeroed the table, and the row below removed that cost, so the sizes want re-measuring. |
+| **A string table retired, not cleared** | the dictionary resets far more often than once per frame — measured at 256×256, ten times a frame on noise at 32 colours and seventeen at 256 — and each reset used to zero 64 kB. Slots now carry a generation counter, so a reset is an increment and the table is genuinely cleared only every 1023 generations. Interleaved against 0.2.0, AOT: **+47% noise, +26% photo, +24% gradient**. Encoded bytes unchanged. |
 | **Batched sink writes** | passing every 255-byte sub-block straight through cost **24,365** sink calls for a 5.8 MB animation. Batching makes it 121. |
 | **Sub-blocks written in place** | the length byte is reserved and patched afterwards, so compressed bytes are never staged in a scratch array and copied — that copy is a `memcpy` of the entire output. |
 | **No per-pixel range check at 256 colours** | where no byte *can* be out of range. Elsewhere the check ORs the bytes together and only walks precisely if that suggests trouble — 2.6% rather than a second pass. |
 
-Three changes that looked obviously right and measured worse, kept here so nobody repeats them: a
+Two changes that looked obviously right and measured worse, kept here so nobody repeats them: a
 power-of-two hash with **linear** probing ran **36× slower**, because GIF keys cluster hard and linear
-probing turns clustering into long walks; enlarging the hash past 16384 costs more in clearing between
-frames than it saves in probing; and a prime table with `key % size`, which is correct and was the
-implementation for a while, pays a division on every pixel — most painfully where runs are long and
-the first probe already succeeds.
+probing turns clustering into long walks; and a prime table with `key % size`, which is correct and
+was the implementation for a while, pays a division on every pixel — most painfully where runs are
+long and the first probe already succeeds.
+
+There was a third — that enlarging the hash past 16384 cost more in clearing between frames than it
+saved in probing. That was true when it was measured and is not any more: the table is no longer
+cleared between frames, so the finding died with the cost that caused it.
+
+**A note on measuring this yourself.** Under the JIT these workloads swung ±13% run to run on
+identical code, wide enough to hide a real 25% change — so a before-and-after pair of `dart run`
+timings will not settle anything. Compare with `dart compile exe`, alternating the two builds, which
+is both stable and how a Flutter release build actually runs this package.
 
 ## API
 
