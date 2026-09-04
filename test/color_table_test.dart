@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:gif_writer/gif_writer.dart';
 import 'package:test/test.dart';
 
@@ -121,5 +123,43 @@ void main() {
         expect(table.bitsPerPixel, bits, reason: '$count colours');
       });
     });
+  });
+
+  group('quantize validation', () {
+    // The bytes-per-pixel and colour-cap rules are the caller's most likely
+    // mistakes, and each would otherwise fail deep inside an engine rather than
+    // at the door. The quantisers themselves are exercised in quantize_test.dart.
+    final rgb = Uint8List(4 * 3); // four opaque pixels
+
+    for (final quantizer in <GifQuantizer>[
+      GifQuantizer.octree,
+      GifQuantizer.wu,
+    ]) {
+      test('$quantizer refuses a length that is not three per pixel', () {
+        expect(
+          () => GifColorTable.quantize(Uint8List(7), quantizer: quantizer),
+          throwsArgumentError,
+        );
+      });
+
+      test('$quantizer refuses empty pixels', () {
+        expect(
+          () => GifColorTable.quantize(Uint8List(0), quantizer: quantizer),
+          throwsArgumentError,
+        );
+      });
+
+      test('$quantizer refuses maxColors outside 1..256', () {
+        expect(
+          () => GifColorTable.quantize(rgb, maxColors: 0, quantizer: quantizer),
+          throwsArgumentError,
+        );
+        expect(
+          () =>
+              GifColorTable.quantize(rgb, maxColors: 257, quantizer: quantizer),
+          throwsArgumentError,
+        );
+      });
+    }
   });
 }

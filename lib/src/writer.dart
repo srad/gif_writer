@@ -11,6 +11,7 @@ import 'dither.dart';
 import 'file_sink.dart' if (dart.library.io) 'file_sink_io.dart';
 import 'frame.dart';
 import 'lzw.dart';
+import 'quantizer.dart';
 
 /// How many times the animation repeats.
 class GifRepeat {
@@ -64,12 +65,14 @@ class GifRepeat {
 /// file in memory and hand it over at the end, which a long recording on a phone
 /// cannot afford.
 ///
-/// The header is written on the **first frame**, not at construction, so a
-/// future version can derive the colour table from that frame.
+/// The header is written on the **first frame**, not at construction — which is
+/// what lets the writer derive a colour table from that frame when none is given.
 ///
-/// Three ways in, all onto the colour table given here: [addIndexedFrame] takes
-/// one byte per pixel and is byte-exact, while [addRgbFrame] and [addRgbaFrame]
-/// map and dither.
+/// Three ways in: [addIndexedFrame] takes one byte per pixel and is byte-exact,
+/// while [addRgbFrame] and [addRgbaFrame] map and dither. All three go onto the
+/// colour table — either the one passed as `colors:`, or, if that is left unset,
+/// the one derived from the first RGB or RGBA frame by the writer's [GifQuantizer].
+/// An indexed frame cannot derive a table, so it requires `colors:`.
 ///
 /// ```dart
 /// final gif = GifWriter(
@@ -104,13 +107,20 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// touches it, because indices are already exact. It defaults to
   /// [GifDither.blueNoise] — see [GifDither] for why an ordered dither and not
   /// Floyd–Steinberg.
+  ///
+  /// [colors] is **optional**. Leave it unset to have the writer derive a global
+  /// table from the first RGB or RGBA frame; supply one when you already have a
+  /// palette, or want indexed frames (which cannot derive a table). [quantizer]
+  /// chooses how that derivation is done and is ignored when [colors] is given —
+  /// see [GifQuantizer].
   GifWriter(
     StreamSink<List<int>> sink, {
     required int width,
     required int height,
-    required GifColorTable colors,
+    GifColorTable? colors,
     GifRepeat repeat = GifRepeat.forever,
     GifDither dither = GifDither.blueNoise,
+    GifQuantizer quantizer = GifQuantizer.octree,
     Future<void> Function()? onFlush,
     int bufferSize = 64 * 1024,
   }) : _out = BufferedByteSink(sink, capacity: bufferSize),
@@ -119,6 +129,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
        _colors = colors,
        _repeat = repeat,
        _dither = dither,
+       _quantizer = quantizer,
        _onFlush = onFlush;
 
   /// Writes to a file at [path], truncating anything already there.
@@ -136,9 +147,10 @@ class GifWriter implements StreamConsumer<GifFrame> {
     String path, {
     required int width,
     required int height,
-    required GifColorTable colors,
+    GifColorTable? colors,
     GifRepeat repeat = GifRepeat.forever,
     GifDither dither = GifDither.blueNoise,
+    GifQuantizer quantizer = GifQuantizer.octree,
   }) {
     final sink = openFileSink(path);
     return GifWriter(
@@ -148,6 +160,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
       colors: colors,
       repeat: repeat,
       dither: dither,
+      quantizer: quantizer,
       onFlush: flusherFor(sink),
     );
   }
@@ -171,9 +184,13 @@ class GifWriter implements StreamConsumer<GifFrame> {
   final BufferedByteSink _out;
   final int _width;
   final int _height;
-  final GifColorTable _colors;
+
+  /// The global colour table. Null until known: either passed as `colors:`, or
+  /// derived from the first RGB/RGBA frame. Read only after that point.
+  GifColorTable? _colors;
   final GifRepeat _repeat;
   final GifDither _dither;
+  final GifQuantizer _quantizer;
   final Future<void> Function()? _onFlush;
 
   /// Built on the **first RGB frame**, never for an indexed-only animation.
@@ -206,8 +223,11 @@ class GifWriter implements StreamConsumer<GifFrame> {
   final Uint8List _descriptor = Uint8List(10);
 
   /// Whether any byte is a legal index, which makes the per-pixel check in
-  /// [addIndexedFrame] unnecessary.
-  late final bool _everyByteValid = _colors.length == 256;
+  /// [addIndexedFrame] unnecessary. A getter, not a `late final`, because the
+  /// table may not exist yet when the writer is built — reading it before the
+  /// palette is known would be a bug, and the indexed path guards against that
+  /// first.
+  bool get _everyByteValid => _colors!.length == 256;
 
   bool _headerWritten = false;
   bool _closed = false;
@@ -234,6 +254,14 @@ class GifWriter implements StreamConsumer<GifFrame> {
     if (_closed) {
       throw StateError('the writer is closed');
     }
+    if (_colors == null) {
+      // Indices address a palette; they cannot conjure one. A writer left to
+      // derive its table needs an RGB or RGBA frame to derive it from.
+      throw StateError(
+        'no colour table: pass `colors:` to the constructor, or add an RGB or '
+        'RGBA frame first so one can be derived',
+      );
+    }
     final expected = _width * _height;
     if (indices.length != expected) {
       throw ArgumentError.value(
@@ -247,13 +275,17 @@ class GifWriter implements StreamConsumer<GifFrame> {
 
   /// Appends a frame of RGB pixels, three bytes each, mapped to the colour table.
   ///
-  /// The table is the one given at construction — **this does not choose a
-  /// palette**, and there is no quantiser in the package yet. Colours that are
-  /// not in the table are dithered between the two nearest entries, using the
-  /// writer's [GifDither].
+  /// Colours not in the table are dithered between the two nearest entries, using
+  /// the writer's [GifDither]; a pixel that is *exactly* a table colour always
+  /// maps to that entry, so palettised content survives this path unchanged.
   ///
-  /// A pixel that is *exactly* a table colour always maps to that entry, so
-  /// palettised content survives this path unchanged.
+  /// **If the writer was built without `colors:`, the very first such frame
+  /// derives the global table** — from this frame's pixels alone, via the
+  /// writer's [GifQuantizer]. Later frames map onto that table like any other,
+  /// so a scene whose palette shifts partway through is mapped onto the colours
+  /// the *first* frame needed. Quantise a representative image yourself with
+  /// `GifColorTable.quantize` and pass it as `colors:` when that is not what you
+  /// want.
   Future<void> addRgbFrame(
     Uint8List rgb, {
     Duration delay = Duration.zero,
@@ -269,6 +301,9 @@ class GifWriter implements StreamConsumer<GifFrame> {
         'expected $expected bytes for ${_width}x$_height at 3 bytes per pixel',
       );
     }
+    // Derive the table from the first frame if none was supplied — before
+    // mapping, which needs it, and before the header, which is written from it.
+    _colors ??= GifColorTable.quantize(rgb, quantizer: _quantizer);
     final indices = _map(rgb);
     // No range check: these indices came from our own mapper, which cannot
     // produce one outside the table. The check exists for bytes a caller
@@ -299,11 +334,11 @@ class GifWriter implements StreamConsumer<GifFrame> {
         'expected $expected bytes for ${_width}x$_height at 4 bytes per pixel',
       );
     }
-    await _writeIndexed(
-      indices: _map(_composite(rgba: rgba, background: background)),
-      delay: delay,
-      validate: false,
-    );
+    // Composite first, then derive from the *opaque* result — quantising the raw
+    // RGBA would build a palette around colours the alpha never lets through.
+    final rgb = _composite(rgba: rgba, background: background);
+    _colors ??= GifColorTable.quantize(rgb, quantizer: _quantizer);
+    await _writeIndexed(indices: _map(rgb), delay: delay, validate: false);
   }
 
   /// Flattens RGBA onto an opaque background, in place in the scratch buffer.
@@ -330,7 +365,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
   }
 
   Uint8List _map(Uint8List rgb) {
-    final mapper = _mapper ??= ColorMapper(_colors);
+    final mapper = _mapper ??= ColorMapper(_colors!);
     final runner =
         _runner ??= DitherRunner(
           dither: _dither,
@@ -352,7 +387,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // produces 256 colours. This is a whole extra pass over every pixel, so
     // "free when it cannot fail" is worth the branch.
     if (validate && !_everyByteValid) {
-      final limit = _colors.length;
+      final limit = _colors!.length;
       // One OR per pixel, then a single comparison — rather than a compare and a
       // branch per pixel, which measured as most of the gap against an encoder
       // that does not check at all.
@@ -387,7 +422,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
     _writeImageDescriptor();
     _lzw.encode(
       indices: indices,
-      minCodeSize: gifMinCodeSize(colorCount: _colors.length),
+      minCodeSize: gifMinCodeSize(colorCount: _colors!.length),
       out: _out,
     );
     _frames++;
@@ -404,17 +439,32 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // Written once per file, so a list literal here costs nothing worth naming.
     _out.add(const <int>[0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF89a
 
-    final bits = _colors.bitsPerPixel;
-    _out.add(<int>[
-      _width & 0xFF, (_width >> 8) & 0xFF,
-      _height & 0xFF, (_height >> 8) & 0xFF,
-      // Global table present, 8-bit colour resolution, unsorted, and the table's
-      // size as an exponent less one.
-      0x80 | 0x70 | (bits - 1),
-      0, // background colour index
-      0, // pixel aspect ratio: none
-    ]);
-    _out.add(_colors.toBytes());
+    final colors = _colors;
+    if (colors == null) {
+      // Reached only by closing a writer that was left to derive its table and
+      // never got a frame to derive it from. GIF89a allows *no* global colour
+      // table — flag clear, size bits zero, no table bytes — which is the honest
+      // encoding of "there were no colours". Still a valid, if empty, file.
+      _out.add(<int>[
+        _width & 0xFF, (_width >> 8) & 0xFF,
+        _height & 0xFF, (_height >> 8) & 0xFF,
+        0x70, // no global table, 8-bit colour resolution, size 0
+        0, // background colour index
+        0, // pixel aspect ratio: none
+      ]);
+    } else {
+      final bits = colors.bitsPerPixel;
+      _out.add(<int>[
+        _width & 0xFF, (_width >> 8) & 0xFF,
+        _height & 0xFF, (_height >> 8) & 0xFF,
+        // Global table present, 8-bit colour resolution, unsorted, and the
+        // table's size as an exponent less one.
+        0x80 | 0x70 | (bits - 1),
+        0, // background colour index
+        0, // pixel aspect ratio: none
+      ]);
+      _out.add(colors.toBytes());
+    }
 
     // The looping block belongs here — after the table, before any frame — and
     // is the only way GIF expresses "repeat". Omitted entirely for a single

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'quantizer.dart';
+
 /// A GIF colour table: up to 256 opaque RGB entries.
 ///
 /// Deliberately **not** called `GifPalette`. Applications that also model a
@@ -59,6 +61,42 @@ class GifColorTable {
       rgb[i * 3 + 2] = colors[i] & 0xFF;
     }
     return GifColorTable.rgb(rgb);
+  }
+
+  /// Derives a table from raw pixels: [rgb] is three bytes per pixel, and the
+  /// result holds at most [maxColors] entries chosen by [quantizer].
+  ///
+  /// This is the answer to "I have a photo, not a palette." Feed it a
+  /// representative image — a single frame, or a montage of frames you sample —
+  /// and hand the table to `GifWriter`. (`GifWriter` will also derive one for you
+  /// from the first frame if you leave its `colors:` unset; this factory is for
+  /// when you want to choose *what* is quantised, or reuse the table.)
+  ///
+  /// [maxColors] is clamped to GIF's ceiling of 256 by validation, not silently:
+  /// the whole package refuses out-of-range input rather than writing a file that
+  /// means something the caller did not ask for. See [GifQuantizer] for the
+  /// octree-versus-Wu trade-off.
+  factory GifColorTable.quantize(
+    Uint8List rgb, {
+    int maxColors = 256,
+    GifQuantizer quantizer = GifQuantizer.octree,
+  }) {
+    if (rgb.length % 3 != 0) {
+      throw ArgumentError.value(
+        rgb.length,
+        'rgb',
+        'must be three bytes per pixel',
+      );
+    }
+    if (rgb.isEmpty) {
+      throw ArgumentError.value(rgb.length, 'rgb', 'needs at least one pixel');
+    }
+    if (maxColors < 1 || maxColors > 256) {
+      throw ArgumentError.value(maxColors, 'maxColors', 'must be 1 to 256');
+    }
+    return GifColorTable.rgb(
+      runQuantizer(quantizer: quantizer, rgb: rgb, maxColors: maxColors),
+    );
   }
 
   GifColorTable._(this._rgb, this.length);

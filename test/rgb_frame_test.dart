@@ -164,6 +164,98 @@ void main() {
     });
   });
 
+  group('deriving the table when none is supplied', () {
+    // A colourful frame: enough distinct colours that a derived palette is doing
+    // real work, but comfortably under 256 so the round trip stays close.
+    Uint8List swatches(int side) {
+      final rgb = Uint8List(side * side * 3);
+      for (var y = 0; y < side; y++) {
+        for (var x = 0; x < side; x++) {
+          final p = (y * side + x) * 3;
+          rgb[p] = (x * 255 ~/ (side - 1));
+          rgb[p + 1] = (y * 255 ~/ (side - 1));
+          rgb[p + 2] = 0x40;
+        }
+      }
+      return rgb;
+    }
+
+    for (final quantizer in <GifQuantizer>[
+      GifQuantizer.octree,
+      GifQuantizer.wu,
+    ]) {
+      test('$quantizer: an RGB frame with no colors: decodes sanely', () async {
+        const side = 16;
+        final rgb = swatches(side);
+        final sink = Collector();
+        final gif = GifWriter(
+          sink,
+          width: side,
+          height: side,
+          quantizer: quantizer,
+          dither: GifDither.none,
+        );
+        await gif.addRgbFrame(rgb);
+        await gif.close();
+
+        final decoded = decodeFirst(sink.bytes);
+        expect(decoded.width, side);
+        expect(decoded.height, side);
+        // Mean error against a palette the encoder chose itself must stay small.
+        var total = 0;
+        for (var y = 0; y < side; y++) {
+          for (var x = 0; x < side; x++) {
+            final p = (y * side + x) * 3;
+            final pixel = decoded.getPixel(x, y);
+            total += (pixel.r.toInt() - rgb[p]).abs();
+            total += (pixel.g.toInt() - rgb[p + 1]).abs();
+            total += (pixel.b.toInt() - rgb[p + 2]).abs();
+          }
+        }
+        expect(total / (side * side * 3), lessThan(16));
+      });
+
+      test('$quantizer: an RGBA frame with no colors: derives too', () async {
+        const side = 8;
+        final rgba = Uint8List(side * side * 4);
+        for (var i = 0; i < side * side; i++) {
+          rgba[i * 4] = (i * 3) & 0xFF;
+          rgba[i * 4 + 1] = 0x30;
+          rgba[i * 4 + 2] = 0x90;
+          rgba[i * 4 + 3] = 255;
+        }
+        final sink = Collector();
+        final gif = GifWriter(
+          sink,
+          width: side,
+          height: side,
+          quantizer: quantizer,
+        );
+        await gif.addRgbaFrame(rgba, background: 0x000000);
+        await gif.close();
+        expect(decodeFirst(sink.bytes).width, side);
+      });
+    }
+
+    test('an indexed frame with no colors: is refused, not guessed', () {
+      // Indices address a palette; they cannot derive one. The writer must say so
+      // rather than crash on a null table.
+      final gif = GifWriter(Collector(), width: 4, height: 4);
+      expect(() => gif.addIndexedFrame(Uint8List(16)), throwsStateError);
+    });
+
+    test('closing a table-less writer with no frames still writes a file', () {
+      // The zero-frame guarantee holds even when no palette was ever derived:
+      // GIF89a permits a file with no global colour table.
+      final sink = Collector();
+      final gif = GifWriter(sink, width: 4, height: 4);
+      expect(gif.close(), completes);
+      // A valid, if empty, GIF: the signature and a trailer at least.
+      expect(sink.bytes.sublist(0, 6), <int>[71, 73, 70, 56, 57, 97]);
+      expect(sink.bytes.last, 0x3B);
+    });
+  });
+
   group('the stream form accepts every frame shape', () {
     test('GifFrame.rgb through pipe matches addRgbFrame', () async {
       const side = 8;

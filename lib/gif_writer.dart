@@ -5,9 +5,10 @@
 /// one available in Dart — builds the whole file in memory and hands it over at
 /// the end, which a long capture on a phone cannot afford.
 ///
-/// You bring the colour table. Give it **palette indices** and the round trip is
-/// byte-exact; give it **RGB** and it is mapped onto your table, dithering the
-/// colours the table cannot hold.
+/// Bring a colour table, or let it derive one. Give it **palette indices** and
+/// the round trip is byte-exact; give it **RGB** and it is mapped onto a table —
+/// yours, or one quantised from the first frame — dithering the colours the table
+/// cannot hold.
 ///
 /// ```dart
 /// final gif = GifWriter.toFile(
@@ -34,4 +35,5 @@ library;
 export 'src/color_table.dart' show GifColorTable;
 export 'src/dither.dart' show GifDither;
 export 'src/frame.dart' show GifFrame, GifFrameKind;
+export 'src/quantizer.dart' show GifQuantizer;
 export 'src/writer.dart' show GifRepeat, GifWriter;

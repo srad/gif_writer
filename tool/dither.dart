@@ -153,9 +153,10 @@ Float32List _blur(Uint8List rgb, int side) {
 
 /// A fixed uniform palette: [levels] steps per channel.
 ///
-/// Uniform rather than derived from the image, because this package has no
-/// quantiser yet — and because a fixed palette is the harder, more honest test:
-/// it cannot flatter a dither by already containing the image's colours.
+/// Uniform rather than derived from the image (`GifColorTable.quantize` would do
+/// that) because a fixed palette is the harder, more honest test of a *dither*:
+/// it cannot flatter one by already containing the image's colours. Quantiser
+/// quality is measured separately, in `tool/quantize.dart`.
 GifColorTable uniformPalette(int levels) => GifColorTable.packed(<int>[
   for (var r = 0; r < levels; r++)
     for (var g = 0; g < levels; g++)

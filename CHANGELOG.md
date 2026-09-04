@@ -1,3 +1,36 @@
+## 0.3.0
+
+The encoder now chooses a palette for you. Someone holding a photo or a video frame has RGB and no
+palette; until now they had to build a `GifColorTable` by hand, and a bad guess was dithered onto
+faithfully. **The indexed path is untouched** — byte-identical to 0.2.x — and `colors:` still works
+exactly as before; everything here is additive.
+
+### Added
+
+- **`GifColorTable.quantize(rgb, {maxColors, quantizer})`** derives a table from raw pixels.
+- **`GifWriter`'s `colors:` is now optional.** Left unset, the writer quantises the **first** RGB or
+  RGBA frame into one global table and maps the rest of the animation onto it — so the streaming
+  guarantee holds: the palette comes from the one frame already in hand, nothing is accumulated. An
+  RGBA first frame is composited before it is quantised. An *indexed* first frame cannot derive a
+  table and is refused with a clear error rather than a crash.
+- **Two quantisers, behind `GifQuantizer`.** `octree` (the default) holds no more than the palette —
+  a few hundred nodes reduced as the image streams in, freed before a frame is written — which is why
+  it is the default in a package whose whole claim is a small, fixed overhead. `wu` (Xiaolin Wu's
+  greedy orthogonal bipartitioning) scores a little higher on fidelity for a transient ~1.4 MB moment
+  histogram, freed the same way. `tool/quantize.dart` measures the two rather than asserting the
+  trade-off; on a 256×256 photographic frame Wu came in at RMS 1.78 against octree's 2.06.
+- A writer left to derive its table but closed with **no** frames now writes a valid header with no
+  global colour table, keeping the zero-frame guarantee even when no palette was ever chosen.
+
+### Notes
+
+- The palette is **global** — one table for the animation, derived from the first frame. Later frames
+  map onto it, so a scene whose colours shift partway through is mapped onto the first frame's palette;
+  quantise a representative image yourself and pass it as `colors:` when that is not what you want.
+  Per-frame palettes need local colour tables and wait for 0.4.0's frame diffing.
+- Both quantisers are exercised on the VM and under Chrome; Wu's moment tables are `Float64List`
+  precisely so its sums stay exact where `int` is a `double`.
+
 ## 0.2.1
 
 Two defects and a test that was not testing what it said. **Output is byte-identical to 0.2.0** on

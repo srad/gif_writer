@@ -12,8 +12,8 @@ Future<void> main() async {
   const size = 256;
   const frames = 200;
 
-  // A 32-step blue-to-white ramp. Any table of up to 256 colours will do; this
-  // package does not quantise, so what you index is exactly what decodes.
+  // A 32-step blue-to-white ramp. An indexed frame is byte-exact: what you index
+  // is exactly what decodes, with nothing quantised or approximated.
   final colors = GifColorTable.packed(<int>[
     for (var i = 0; i < 32; i++)
       (i * 255 ~/ 31) << 16 | (i * 255 ~/ 31) << 8 | 0xFF,
@@ -89,4 +89,45 @@ Future<void> _rgbExample() async {
 
   await gif.close();
   print('wrote gradient.gif — 60 RGB frames dithered onto 216 colours');
+
+  await _quantisedExample();
+}
+
+/// The third way in: **RGB with no palette at all**.
+///
+/// Leave `colors:` unset and the writer derives a global table from the first
+/// frame — the answer to "I have a photo, not a palette." [GifQuantizer.octree]
+/// is the default (its memory is bounded by the palette); [GifQuantizer.wu] costs
+/// a transient histogram for a little more fidelity. `tool/quantize.dart` measures
+/// the difference.
+Future<void> _quantisedExample() async {
+  const size = 128;
+
+  final gif = GifWriter.toFile(
+    'quantised.gif',
+    width: size,
+    height: size,
+    // No colours supplied — they are chosen from the pixels below.
+    quantizer: GifQuantizer.wu,
+  );
+
+  final rgb = Uint8List(size * size * 3);
+  for (var f = 0; f < 40; f++) {
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        final p = (y * size + x) * 3;
+        // A drifting wash of many more colours than 256 — the case that needs a
+        // palette chosen for it.
+        rgb[p] = (x * 255 ~/ size);
+        rgb[p + 1] = (y * 255 ~/ size);
+        rgb[p + 2] = ((f * 6) + (x ~/ 2) + (y ~/ 2)) & 0xFF;
+      }
+    }
+    await gif.addRgbFrame(rgb, delay: const Duration(milliseconds: 50));
+  }
+
+  await gif.close();
+  print(
+    'wrote quantised.gif — 40 RGB frames onto a palette derived from the first',
+  );
 }

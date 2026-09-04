@@ -28,6 +28,15 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
       type (`Uint8List` for the blue-noise table, in the generator too), and the wrong symbol
       (`compare.dart`'s file doc, which dartdoc bound to `CountingSink`)
 
+### 0.3.0
+- [x] Global palette derivation. `GifColorTable.quantize` derives a table from RGB pixels, and
+      `GifWriter`'s `colors:` is now optional — left unset, it quantises the first RGB/RGBA frame into
+      the global table. Two engines behind `GifQuantizer`: octree (`octree.dart`, the default, memory
+      bounded by the palette) and Wu (`wu.dart`, higher fidelity for a transient 33³ histogram),
+      dispatched from `quantizer.dart` and measured against each other in `tool/quantize.dart`.
+- [x] A table-less writer closed with no frames writes a valid header with **no** global colour table,
+      keeping the zero-frame guarantee even when nothing was ever derived.
+
 ### Not yet tagged
 - [ ] **`v0.2.1` has no git tag.** `0.2.1` is published on pub.dev and `main` is at the right commit,
       but the tag list stops at `v0.2.0`: `git tag v0.2.1 <commit> && git push origin v0.2.1`.
@@ -99,20 +108,17 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 
 ## Features
 
-### 0.3.0
-- [ ] Octree quantisation — deriving the palette, global or per frame.
-      Deliberately not first: it is the part with a memory cost of its own, and getting the streaming
-      container and the mapping right mattered more than accepting more input formats early.
-- [ ] When per-frame palettes arrive, `ColorMapper`'s cube and exact-colour table must be invalidated
-      alongside the LZW dictionary. Nothing is cleared between frames today because the palette is
-      fixed for a writer's lifetime.
-
 ### 0.4.0
 - [ ] Transparency and disposal methods. `addRgbaFrame`'s required `background` exists only because
       transparency is not implemented; it becomes optional once it is.
 - [ ] Frame diffing, using the image descriptor's left/top and a local colour table. The ordered
       dithers were chosen partly to make this possible — static regions stay byte-identical frame to
       frame, which error diffusion would destroy.
+- [ ] Per-frame palettes, which the local colour tables above make possible. 0.3.0 derives one
+      **global** palette from the first frame; a per-frame palette needs a local table per frame, and
+      when that lands `ColorMapper`'s cube and exact-colour table must be invalidated alongside the LZW
+      dictionary — nothing is cleared between frames today because the global palette is fixed for a
+      writer's lifetime.
 
 ---
 
@@ -123,6 +129,10 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [~] **A peak-RSS test for the streaming guarantee.** `ProcessInfo.currentRss` is GC-dependent and
       would be flaky, and a flaky test guarding the one property that matters is worse than none.
       The deterministic structural tests in `test/streaming_test.dart` prove the same thing.
+- [~] **Interlacing.** The image descriptor's interlace flag (`_descriptor[9]`, bit 6) stays clear.
+      Rarely wanted for a modern encoder and low value: it helps only a decoder rendering a partial
+      download progressively, which nothing this package targets does. Flip the bit and reorder the
+      rows if a use ever appears.
 - [~] **A prime LZW hash table, and linear probing.** Both measured worse; recorded in `lzw.dart` so
       nobody repeats them.
 - [~] **Splitting `lzw.dart`'s measurement tables into `doc/`.** The comments are load-bearing —

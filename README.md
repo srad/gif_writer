@@ -133,7 +133,23 @@ await gif.addRgbaFrame(rgba, background: 0xFFFFFF);  // 4, composited first
 ```
 
 A pixel that *is* exactly a table colour still maps to that entry, so palettised content survives this
-path unchanged. Choosing the table for you — quantisation — is 0.3.0; see [Scope](#scope).
+path unchanged.
+
+No palette at all? Leave `colors:` unset and the writer chooses one, quantising the first frame:
+
+```dart
+final gif = GifWriter.toFile('out.gif', width: w, height: h);  // no colors:
+await gif.addRgbFrame(rgb);   // the first frame's pixels derive the global table
+```
+
+Or derive one yourself from a representative image and reuse it, picking the algorithm:
+
+```dart
+final colors = GifColorTable.quantize(rgb, quantizer: GifQuantizer.wu);
+```
+
+`GifQuantizer.octree` is the default — its memory is bounded by the palette, never the image;
+`GifQuantizer.wu` scores a little higher on fidelity for a transient histogram. See [Scope](#scope).
 
 ## Recipes
 
@@ -372,22 +388,25 @@ express; this package writes what you ask for rather than pretending otherwise.
 
 ## Scope
 
-**You bring the colour table.** Indexed frames are byte-exact, and RGB frames are mapped onto the table
-you supplied. What is *not* here yet is choosing that table for you — see 0.3.0.
+**Bring a colour table, or let it derive one.** Indexed frames are byte-exact; RGB frames are mapped
+onto the table you supplied, or onto one quantised from the first frame when you supply none. What is
+*not* here yet is transparency and frame diffing — see 0.4.0.
 
 | version | |
 | --- | --- |
 | **0.1.0** ✅ | Streaming container, LZW, indexed frames, any sink |
 | **0.2.0** ✅ | RGB and RGBA input, mapped to your table, with five dithers |
 | **0.2.1** ✅ | Loop-count and dictionary-test fixes; LZW resets without zeroing its table |
-| 0.3.0 | Octree quantisation — deriving the palette, global or per frame |
-| 0.4.0 | Transparency, disposal methods, frame diffing |
+| **0.3.0** ✅ | Global palette derivation — octree and Wu quantisers, `colors:` now optional |
+| 0.4.0 | Transparency, disposal methods, frame diffing, per-frame palettes |
 
 The full picture — open work, structural decisions, and what was ruled out and why — is in
 [ROADMAP.md](ROADMAP.md).
 
-Quantisation is deliberately not first: it is the part with a memory cost of its own, and getting the
-streaming container and the mapping right matters more than accepting more input formats early.
+Quantisation came after the container and the mapping on purpose: it is the part with a memory cost of
+its own, and getting the streaming guarantee right mattered more than accepting more input formats
+early. It is a **global** palette — one table for the animation, derived from the first frame;
+per-frame palettes wait for the local colour tables that 0.4.0's frame diffing brings.
 
 ## Testing
 
