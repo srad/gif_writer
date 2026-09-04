@@ -39,9 +39,14 @@ FASTER_PCT = [71, 50, 86, 60]
 SMALLER_PCT = [6.4, 1.3, 4.3, 0.8]
 
 # Held in memory. `package:image` returns the finished file, so what it holds is
-# the file; this holds a fixed staging buffer whatever the length.
+# the file; this holds a fixed staging buffer and LZW table whatever the length.
+#
+# **Not the 0.06 the sink reports.** `compare.dart` measures the largest single
+# handover, which is the 64 kB staging buffer alone — it cannot see the 128 kB
+# LZW string table, which is held just as permanently. Quoting the sink's number
+# put 0.06 here against the README's own "~192 kB" three sections down.
 MB_PER_FRAME = 5.19 / 60      # measured, noise at 256 colours
-OURS_HELD_MB = 0.06
+OURS_HELD_MB = 0.19           # 64 kB staging + 128 kB LZW table
 
 BLUE = "#0175C2"
 GREY = "#9AA0A6"

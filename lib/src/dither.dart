@@ -28,7 +28,7 @@ import 'color_mapper.dart';
 /// data, and not `sealed`, because callers never switch on it.
 class GifDither {
   // Public parameter names assigned to private fields, rather than `this._x`:
-  // private named parameters need Dart 3.12, and this package supports 3.4.
+  // private named parameters need Dart 3.12, and this package supports 3.7.
   const GifDither._(this._kind, {List<int>? matrix, int side = 0})
     : _matrix = matrix,
       _side = side;
@@ -53,7 +53,9 @@ class GifDither {
   /// default argument.
   static const GifDither blueNoise = GifDither._(
     _DitherKind.ordered,
-    side: 64,
+    // Taken from the generated table rather than written as 64, so the
+    // generator and this descriptor cannot drift apart.
+    side: blueNoiseSide,
   );
 
   /// The classic 4×4 recursive matrix. Cheapest, smallest, and its regular grid
@@ -76,8 +78,9 @@ class GifDither {
   /// **Best for a single frame, and animation-hostile** for the three reasons in
   /// the class docs. Reach for it when the output is one image, or when quality
   /// beats both file size and temporal stability.
-  static const GifDither floydSteinberg =
-      GifDither._(_DitherKind.floydSteinberg);
+  static const GifDither floydSteinberg = GifDither._(
+    _DitherKind.floydSteinberg,
+  );
 
   /// Atkinson's kernel, as used by classic MacPaint.
   ///
@@ -169,8 +172,8 @@ class DitherRunner {
 
   void _mapNearest({required Uint8List rgb, required Uint8List out}) {
     for (var i = 0, p = 0; i < out.length; i++, p += 3) {
-      out[i] = _mapper.candidates(r: rgb[p], g: rgb[p + 1], b: rgb[p + 2]) &
-          0xFF;
+      out[i] =
+          _mapper.candidates(r: rgb[p], g: rgb[p + 1], b: rgb[p + 2]) & 0xFF;
     }
   }
 
@@ -216,7 +219,8 @@ class DitherRunner {
         // The denominator cannot be zero: the two entries differ, or `best ==
         // second` caught it above.
         final denominator = sr * sr + sg * sg + sb * sb;
-        var t = (((r - br) * sr + (g - bg) * sg + (b - bb) * sb) * 4096) ~/
+        var t =
+            (((r - br) * sr + (g - bg) * sg + (b - bb) * sb) * 4096) ~/
             denominator;
         if (t < 0) t = 0;
         if (t > 4095) t = 4095;
@@ -225,9 +229,10 @@ class DitherRunner {
         // threshold at exactly 0, where every colour clears it and the matrix is
         // biased by half a step. The blue-noise table already has 4096 ranks, so
         // rank and threshold coincide.
-        final threshold = matrix == null
-            ? blueNoiseRanks[row + (x & mask)]
-            : (matrix[row + (x & mask)] * 8192 + 4096) ~/ (2 * levels);
+        final threshold =
+            matrix == null
+                ? blueNoiseRanks[row + (x & mask)]
+                : (matrix[row + (x & mask)] * 8192 + 4096) ~/ (2 * levels);
         out[i] = t > threshold ? second : best;
       }
     }
@@ -275,7 +280,13 @@ class DitherRunner {
           er = er * 6 ~/ 8;
           eg = eg * 6 ~/ 8;
           eb = eb * 6 ~/ 8;
-          _spreadAtkinson(x: x, er: er, eg: eg, eb: eb, leftToRight: leftToRight);
+          _spreadAtkinson(
+            x: x,
+            er: er,
+            eg: eg,
+            eb: eb,
+            leftToRight: leftToRight,
+          );
         } else {
           _spreadFloydSteinberg(
             x: x,
@@ -319,7 +330,15 @@ class DitherRunner {
   }) {
     final ahead = leftToRight ? 1 : -1;
     // Atkinson's six neighbours each take a sixth of what is passed on.
-    _add(row: _error, x: x + ahead, er: er, eg: eg, eb: eb, numerator: 1, den: 6);
+    _add(
+      row: _error,
+      x: x + ahead,
+      er: er,
+      eg: eg,
+      eb: eb,
+      numerator: 1,
+      denominator: 6,
+    );
     _add(
       row: _error,
       x: x + 2 * ahead,
@@ -327,10 +346,26 @@ class DitherRunner {
       eg: eg,
       eb: eb,
       numerator: 1,
-      den: 6,
+      denominator: 6,
     );
-    _add(row: _errorNext, x: x - ahead, er: er, eg: eg, eb: eb, numerator: 1, den: 6);
-    _add(row: _errorNext, x: x, er: er, eg: eg, eb: eb, numerator: 1, den: 6);
+    _add(
+      row: _errorNext,
+      x: x - ahead,
+      er: er,
+      eg: eg,
+      eb: eb,
+      numerator: 1,
+      denominator: 6,
+    );
+    _add(
+      row: _errorNext,
+      x: x,
+      er: er,
+      eg: eg,
+      eb: eb,
+      numerator: 1,
+      denominator: 6,
+    );
     _add(
       row: _errorNext,
       x: x + ahead,
@@ -338,12 +373,20 @@ class DitherRunner {
       eg: eg,
       eb: eb,
       numerator: 1,
-      den: 6,
+      denominator: 6,
     );
     // The sixth neighbour is two rows down, which a two-row buffer cannot reach.
     // Folding it into the row below keeps the diffused total right; spreading it
     // exactly would cost a third row for a difference nobody can see.
-    _add(row: _errorNext, x: x, er: er, eg: eg, eb: eb, numerator: 1, den: 6);
+    _add(
+      row: _errorNext,
+      x: x,
+      er: er,
+      eg: eg,
+      eb: eb,
+      numerator: 1,
+      denominator: 6,
+    );
   }
 
   void _add({
@@ -353,13 +396,13 @@ class DitherRunner {
     required int eg,
     required int eb,
     required int numerator,
-    int den = 16,
+    int denominator = 16,
   }) {
     if (x < 0 || x >= _width) return;
     final e = x * 3;
-    row[e] += er * numerator ~/ den;
-    row[e + 1] += eg * numerator ~/ den;
-    row[e + 2] += eb * numerator ~/ den;
+    row[e] += er * numerator ~/ denominator;
+    row[e + 1] += eg * numerator ~/ denominator;
+    row[e + 2] += eb * numerator ~/ denominator;
   }
 
   static int _clampByte(int v) => v < 0 ? 0 : (v > 255 ? 255 : v);

@@ -46,7 +46,9 @@ class GifColorTable {
 
   /// The colour at [index], packed as `0xRRGGBB`.
   int operator [](int index) =>
-      (_rgb[index * 3] << 16) | (_rgb[index * 3 + 1] << 8) | _rgb[index * 3 + 2];
+      (_rgb[index * 3] << 16) |
+      (_rgb[index * 3 + 1] << 8) |
+      _rgb[index * 3 + 2];
 
   /// The table as GIF stores it: a power-of-two number of entries, zero-padded.
   ///
@@ -64,6 +66,12 @@ class GifColorTable {
 
   /// The exponent GIF writes in its size field: the table holds `2^bits`
   /// entries. Never below 1, because the smallest legal table is two colours.
+  ///
+  /// **Not the same floor as `gifMinCodeSize` in `lzw.dart`, which is 2.** The
+  /// two are separate rules of the format that happen to share a shape: this one
+  /// sizes the colour table, that one sizes the LZW codes, and GIF permits a
+  /// two-entry table while forbidding a one-bit code size. Changing either to
+  /// match the other desynchronises the stream from the header.
   int get bitsPerPixel {
     var bits = 1;
     while ((1 << bits) < length) {

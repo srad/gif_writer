@@ -130,8 +130,9 @@ abstract final class SampleImage {
         }
         // Grain, small enough to read as texture rather than as noise.
         value += (random.nextDouble() - 0.5) * 0.06;
-        pixels[y * side + x] =
-            (value.clamp(0, 1) * (colours - 1)).round().clamp(0, colours - 1);
+        pixels[y * side + x] = (value.clamp(0, 1) * (colours - 1))
+            .round()
+            .clamp(0, colours - 1);
       }
     }
     return pixels;

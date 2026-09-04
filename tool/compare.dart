@@ -1,11 +1,3 @@
-import 'dart:async';
-import 'dart:typed_data';
-
-import 'package:gif_writer/gif_writer.dart';
-import 'package:image/image.dart' as img;
-
-import 'sample_image.dart';
-
 /// Measures this package against `package:image`, the only other GIF encoder
 /// for Dart, on identical input.
 ///
@@ -16,6 +8,17 @@ import 'sample_image.dart';
 /// pixel-for-pixel before a single timing is printed.
 ///
 /// Run it yourself: `dart run tool/compare.dart`.
+library;
+
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:gif_writer/gif_writer.dart';
+import 'package:image/image.dart' as img;
+
+import 'sample_image.dart';
+
+/// Counts what an encoder hands over, and the largest single handover.
 final class CountingSink implements StreamSink<List<int>> {
   int bytes = 0;
   int adds = 0;
@@ -50,9 +53,11 @@ const int trials = 9;
 Future<void> main() async {
   print('$frames frames of $size x $size, neither encoder quantising');
   print('median of $trials interleaved trials, range alongside\n');
-  print('${'workload'.padRight(22)}${'rate (median)'.padLeft(16)}'
-      '${'range'.padLeft(20)}${'held'.padLeft(10)}'
-      '${'writes'.padLeft(8)}${'output'.padLeft(11)}');
+  print(
+    '${'workload'.padRight(22)}${'rate (median)'.padLeft(16)}'
+    '${'range'.padLeft(20)}${'held'.padLeft(10)}'
+    '${'writes'.padLeft(8)}${'output'.padLeft(11)}',
+  );
 
   // Two workloads at two palette sizes. Noise is LZW's worst case and the
   // fairest stress test of the compressor itself; the photographic image is
@@ -60,9 +65,10 @@ Future<void> main() async {
   // only one of them would be a choice rather than a measurement.
   for (final colours in <int>[32, 256]) {
     for (final workload in <String>['noise', 'photo']) {
-      final frame = workload == 'noise'
-          ? SampleImage.noise(side: size, colours: colours)
-          : SampleImage.photo(side: size, colours: colours);
+      final frame =
+          workload == 'noise'
+              ? SampleImage.noise(side: size, colours: colours)
+              : SampleImage.photo(side: size, colours: colours);
       await compare(
         label: '$workload · $colours colours',
         frame: frame,
@@ -176,8 +182,10 @@ Future<void> compare({
       if (rgb(other) != want) otherWrong++;
     }
     if (mineWrong != 0 || otherWrong != 0) {
-      print('$label: NOT COMPARABLE — gif_writer $mineWrong wrong pixels, '
-          'package:image $otherWrong wrong pixels. Timings suppressed.');
+      print(
+        '$label: NOT COMPARABLE — gif_writer $mineWrong wrong pixels, '
+        'package:image $otherWrong wrong pixels. Timings suppressed.',
+      );
       return;
     }
   }
@@ -221,14 +229,15 @@ Future<void> compare({
     ('  package:image', theirsRuns.first, theirsTime),
   ]) {
     final (median, low, high) = t;
-    print('${(name == '  gif_writer' ? label : '').padRight(22)}'
-        '${'${rate(median).toStringAsFixed(1)} Mpx/s'.padLeft(16)}'
-        '${'${rate(high).toStringAsFixed(1)} - '
-                '${rate(low).toStringAsFixed(1)}'
-            .padLeft(20)}'
-        '${mb(r.peak).padLeft(10)}'
-        '${r.adds.toString().padLeft(8)}'
-        '${mb(r.bytes).padLeft(11)}   ${name.trim()}');
+    print(
+      '${(name == '  gif_writer' ? label : '').padRight(22)}'
+      '${'${rate(median).toStringAsFixed(1)} Mpx/s'.padLeft(16)}'
+      '${'${rate(high).toStringAsFixed(1)} - '
+          '${rate(low).toStringAsFixed(1)}'.padLeft(20)}'
+      '${mb(r.peak).padLeft(10)}'
+      '${r.adds.toString().padLeft(8)}'
+      '${mb(r.bytes).padLeft(11)}   ${name.trim()}',
+    );
   }
 
   // Stated rather than left to the reader: a difference smaller than the wider
@@ -239,22 +248,24 @@ Future<void> compare({
     rate(oursTime.$2) - rate(oursTime.$3),
     rate(theirsTime.$2) - rate(theirsTime.$3),
   ].reduce((a, b) => a > b ? a : b);
-  final verdict = gap.abs() <= spreadWidth
-      ? 'level — the ${gap.abs().toStringAsFixed(1)} Mpx/s gap is inside the '
-            '${spreadWidth.toStringAsFixed(1)} Mpx/s spread'
-      : '${gap > 0 ? 'gif_writer' : 'package:image'} faster by '
-            '${(gap.abs() / rate(theirsTime.$1) * 100).toStringAsFixed(0)}%, '
-            'outside the ${spreadWidth.toStringAsFixed(1)} Mpx/s spread';
+  final verdict =
+      gap.abs() <= spreadWidth
+          ? 'level — the ${gap.abs().toStringAsFixed(1)} Mpx/s gap is inside the '
+              '${spreadWidth.toStringAsFixed(1)} Mpx/s spread'
+          : '${gap > 0 ? 'gif_writer' : 'package:image'} faster by '
+              '${(gap.abs() / rate(theirsTime.$1) * 100).toStringAsFixed(0)}%, '
+              'outside the ${spreadWidth.toStringAsFixed(1)} Mpx/s spread';
 
   // Compression, which is the other half of the story: a faster encoder that
   // wrote a bigger file has not necessarily won.
   final ourBytes = oursRuns.first.bytes;
   final theirBytes = theirsRuns.first.bytes;
   final smaller = (theirBytes - ourBytes) / theirBytes * 100;
-  final sizeVerdict = smaller.abs() < 0.05
-      ? 'output identical in size'
-      : 'output ${smaller > 0 ? 'smaller' : 'larger'} by '
-            '${smaller.abs().toStringAsFixed(1)}%';
+  final sizeVerdict =
+      smaller.abs() < 0.05
+          ? 'output identical in size'
+          : 'output ${smaller > 0 ? 'smaller' : 'larger'} by '
+              '${smaller.abs().toStringAsFixed(1)}%';
   print('${' ' * 22}$verdict; $sizeVerdict');
 }
 

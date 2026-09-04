@@ -75,9 +75,6 @@ class ColorMapper {
   final Int32List _exactKeys;
   final Uint8List _exactValues;
 
-  /// How many colours the palette holds.
-  int get length => _count;
-
   static int _cellOf({required int r, required int g, required int b}) =>
       ((r >> (8 - _cubeBits)) << (2 * _cubeBits)) |
       ((g >> (8 - _cubeBits)) << _cubeBits) |
@@ -106,7 +103,8 @@ class ColorMapper {
   /// A web-safe hash: xor-shifts only, so it never leaves 24 bits and cannot
   /// lose precision where `int` is a double. A multiply-based mixer would
   /// overflow 53 bits for a 24-bit key and quietly misbehave on the web.
-  static int _exactSlot(int rgb) => (rgb ^ (rgb >> 11) ^ (rgb >> 21)) & _exactMask;
+  static int _exactSlot(int rgb) =>
+      (rgb ^ (rgb >> 11) ^ (rgb >> 21)) & _exactMask;
 
   void _insertExact({required int rgb, required int index}) {
     var slot = _exactSlot(rgb);
@@ -175,7 +173,8 @@ class ColorMapper {
   /// not scanning 256 colours per pixel and is measured in `tool/dither.dart`.
   void _fill(int cell) {
     final cr = ((cell >> (2 * _cubeBits)) << (8 - _cubeBits)) | _cellHalf;
-    final cg = (((cell >> _cubeBits) & (_cubeSide - 1)) << (8 - _cubeBits)) |
+    final cg =
+        (((cell >> _cubeBits) & (_cubeSide - 1)) << (8 - _cubeBits)) |
         _cellHalf;
     final cb = ((cell & (_cubeSide - 1)) << (8 - _cubeBits)) | _cellHalf;
 
@@ -221,14 +220,7 @@ class ColorMapper {
     var bestIndex = 0;
     var bestDistance = 0x7FFFFFFF;
     for (var i = 0; i < _count; i++) {
-      final d = _distance(
-        r1: r,
-        g1: g,
-        b1: b,
-        r2: _r[i],
-        g2: _g[i],
-        b2: _b[i],
-      );
+      final d = _distance(r1: r, g1: g, b1: b, r2: _r[i], g2: _g[i], b2: _b[i]);
       if (d < bestDistance) {
         bestDistance = d;
         bestIndex = i;
@@ -239,9 +231,13 @@ class ColorMapper {
 
   /// The palette entry at [index], packed `0xRRGGBB`.
   ///
-  /// Error diffusion must measure its error against **this** — the colour that
-  /// will actually be written — and never against the cube's cell centre, or
-  /// the 5-bit approximation compounds across the frame.
+  /// A convenience for callers wanting all three channels at once; the dithers
+  /// use [redAt], [greenAt] and [blueAt] directly, which is the same three loads
+  /// without the packing.
+  ///
+  /// Whichever is used, error diffusion must measure against **the palette
+  /// colour that will actually be written** and never against the cube's cell
+  /// centre, or the 5-bit approximation compounds across the frame.
   int colorAt(int index) => (_r[index] << 16) | (_g[index] << 8) | _b[index];
 
   int redAt(int index) => _r[index];

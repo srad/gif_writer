@@ -49,8 +49,7 @@ final class RecordingSink implements StreamSink<List<int>> {
 
 void main() {
   GifColorTable grays(int count) => GifColorTable.packed(<int>[
-    for (var i = 0; i < count; i++)
-      (i * 255 ~/ (count - 1)) * 0x010101,
+    for (var i = 0; i < count; i++) (i * 255 ~/ (count - 1)) * 0x010101,
   ]);
 
   /// Encodes [frames] and hands back what `package:image` reads out of it.
@@ -61,12 +60,7 @@ void main() {
     required GifColorTable colors,
   }) async {
     final sink = RecordingSink();
-    final gif = GifWriter(
-      sink,
-      width: width,
-      height: height,
-      colors: colors,
-    );
+    final gif = GifWriter(sink, width: width, height: height, colors: colors);
     for (final frame in frames) {
       await gif.addIndexedFrame(frame, delay: const Duration(milliseconds: 40));
     }
@@ -157,10 +151,18 @@ void main() {
     ]) {
       test(name, () async {
         final colors = grays(16);
-        // A pattern that does not compress into a handful of codes: a solid
-        // frame would exercise almost none of the dictionary.
+        // **Seeded pseudo-noise, not a periodic pattern.** This was
+        // `(i * 7 + i ~/ 3) % 16`, which LZW folds so well that the 200x200
+        // case — the one named for refilling the dictionary — never refilled it
+        // once: 40,000 pixels came to under 4,096 codes, so `_nextCode` never
+        // reached the limit and the whole dictionary-full path went untested.
+        // Verified by tampering: corrupt that path and this test still passed.
+        // Noise refills it four times over at the same size, and the smaller
+        // sizes are unaffected, still there for the block boundaries.
+        var seed = 12345;
+        int next() => seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
         final pixels = Uint8List.fromList(<int>[
-          for (var i = 0; i < width * height; i++) (i * 7 + i ~/ 3) % 16,
+          for (var i = 0; i < width * height; i++) (next() >> 16) % 16,
         ]);
 
         final animation = await roundTrip(
@@ -189,9 +191,7 @@ void main() {
     final colors = GifColorTable.packed(<int>[
       for (var i = 0; i < 256; i++) (i << 16) | (i << 8) | i,
     ]);
-    final pixels = Uint8List.fromList(<int>[
-      for (var i = 0; i < 256; i++) i,
-    ]);
+    final pixels = Uint8List.fromList(<int>[for (var i = 0; i < 256; i++) i]);
 
     final animation = await roundTrip(
       frames: <Uint8List>[pixels],
@@ -204,6 +204,56 @@ void main() {
     for (var i = 0; i < 256; i++) {
       final pixel = frame.getPixel(i % 16, i ~/ 16);
       expect(pixel.r.toInt(), i, reason: 'pixel $i');
+    }
+  });
+
+  test('an animation long enough to recycle the LZW epoch counter', () async {
+    // The string table is retired by bumping a generation counter rather than
+    // being zeroed, and that counter has 1023 generations before it must
+    // actually clear and start over. **Nothing else here comes near that.** The
+    // largest case above is a single 200x200 frame, which resets the dictionary
+    // under a dozen times; the recycle branch would otherwise first run about
+    // sixty frames into somebody's recording, and if it were off by one the
+    // symptom is a file that decodes as noise deep into a long capture — the
+    // exact failure this package exists to prevent, and the worst kind to trace.
+    //
+    // Noise at 256 colours resets ~17 times a frame, so 70 frames crosses the
+    // recycle comfortably. Every frame is checked, not just the last: a stale
+    // generation corrupts the frame it happens in, not the end of the file.
+    const side = 64;
+    const frames = 70;
+    final colors = GifColorTable.packed(<int>[
+      for (var i = 0; i < 256; i++) (i << 16) | (i << 8) | i,
+    ]);
+    // Deterministic pseudo-noise, so a failure is reproducible.
+    var seed = 12345;
+    int next() => seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
+    final sources = <Uint8List>[
+      for (var f = 0; f < frames; f++)
+        Uint8List.fromList(<int>[
+          for (var i = 0; i < side * side; i++) (next() >> 16) & 0xFF,
+        ]),
+    ];
+
+    final animation = await roundTrip(
+      frames: sources,
+      width: side,
+      height: side,
+      colors: colors,
+    );
+
+    expect(animation.frames, hasLength(frames));
+    for (var f = 0; f < frames; f++) {
+      final decoded = animation.frames[f];
+      final want = sources[f];
+      for (var i = 0; i < want.length; i++) {
+        final pixel = decoded.getPixel(i % side, i ~/ side);
+        expect(
+          pixel.r.toInt(),
+          want[i],
+          reason: 'frame $f, pixel $i — the dictionary generation went wrong',
+        );
+      }
     }
   });
 }

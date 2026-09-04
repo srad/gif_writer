@@ -82,8 +82,20 @@ void main() {
     test('bitsPerPixel is the exponent the header writes', () {
       // Off by one here shifts every byte after the table.
       const expected = <int, int>{
-        1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 8: 3, 9: 4,
-        16: 4, 17: 5, 32: 5, 64: 6, 128: 7, 129: 8, 256: 8,
+        1: 1,
+        2: 1,
+        3: 2,
+        4: 2,
+        5: 3,
+        8: 3,
+        9: 4,
+        16: 4,
+        17: 5,
+        32: 5,
+        64: 6,
+        128: 7,
+        129: 8,
+        256: 8,
       };
       expected.forEach((count, bits) {
         final table = GifColorTable.packed(<int>[

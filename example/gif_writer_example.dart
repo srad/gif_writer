@@ -61,8 +61,7 @@ Future<void> _rgbExample() async {
   final colors = GifColorTable.packed(<int>[
     for (var r = 0; r < 6; r++)
       for (var g = 0; g < 6; g++)
-        for (var b = 0; b < 6; b++)
-          (r * 51) << 16 | (g * 51) << 8 | (b * 51),
+        for (var b = 0; b < 6; b++) (r * 51) << 16 | (g * 51) << 8 | (b * 51),
   ]);
 
   final gif = GifWriter.toFile(

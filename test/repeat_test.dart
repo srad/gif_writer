@@ -87,6 +87,27 @@ void main() {
     }
   });
 
+  test('the largest expressible count still writes a block', () async {
+    // 65536 total plays is 65535 extra, which is exactly what two bytes hold.
+    final bytes = await fileWith(GifRepeat.times(65536));
+    final at = netscapeAt(bytes);
+    expect(at, isNonNegative);
+    expect(bytes[at + 16] | (bytes[at + 17] << 8), 0xFFFF);
+  });
+
+  test('a count too large for two bytes is refused, not truncated', () {
+    // The failure this prevents is silent: `times(70000)` stores 69999 and the
+    // low sixteen bits are 4463, so the file plays 4463 times and every pixel
+    // in it is perfect. Nothing downstream can notice.
+    for (final total in <int>[65537, 70000, 1 << 20]) {
+      expect(
+        () => GifRepeat.times(total),
+        throwsArgumentError,
+        reason: 'times($total) does not fit and must not be truncated',
+      );
+    }
+  });
+
   test('times(1) and below mean once, so no block', () async {
     for (final total in <int>[1, 0, -5]) {
       expect(

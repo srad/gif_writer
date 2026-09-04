@@ -78,7 +78,8 @@ double spectralPeak({
     for (var x = 0; x < crop; x++) {
       final p = (y * side + x) * 3;
       // Luma of the error, which is what the eye picks the pattern out of.
-      error[y * crop + x] = 0.299 * (original[p] - reconstructed[p]) +
+      error[y * crop + x] =
+          0.299 * (original[p] - reconstructed[p]) +
           0.587 * (original[p + 1] - reconstructed[p + 1]) +
           0.114 * (original[p + 2] - reconstructed[p + 2]);
     }
@@ -186,18 +187,16 @@ Future<void> main() async {
   ]) {
     final table = uniformPalette(levels);
     print('\n$label - $frames frames of ${side}x$side, median of $trials\n');
-    print('${'dither'.padRight(16)}${'blurred err'.padLeft(12)}'
-        '${'structure'.padLeft(11)}${'plain err'.padLeft(11)}'
-        '${'output'.padLeft(11)}${'rate'.padLeft(14)}');
+    print(
+      '${'dither'.padRight(16)}${'blurred err'.padLeft(12)}'
+      '${'structure'.padLeft(11)}${'plain err'.padLeft(11)}'
+      '${'output'.padLeft(11)}${'rate'.padLeft(14)}',
+    );
 
     for (final (name, dither) in dithers) {
       // What the decoder would show: indices mapped back through the palette.
       final mapper = ColorMapper(table);
-      final runner = DitherRunner(
-        dither: dither,
-        mapper: mapper,
-        width: side,
-      );
+      final runner = DitherRunner(dither: dither, mapper: mapper, width: side);
       final indices = Uint8List(side * side);
       runner.mapRgb(rgb: rgb, out: indices);
       final shown = Uint8List(rgb.length);
@@ -255,18 +254,22 @@ Future<void> main() async {
       times.sort();
       final rate = side * side * frames / (times[trials ~/ 2] * 1000);
 
-      print('${name.padRight(16)}'
-          '${blurred.toStringAsFixed(2).padLeft(12)}'
-          '${structure.toStringAsFixed(0).padLeft(11)}'
-          '${plain.toStringAsFixed(2).padLeft(11)}'
-          '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MB'.padLeft(11)}'
-          '${'${rate.toStringAsFixed(1)} Mpx/s'.padLeft(14)}');
+      print(
+        '${name.padRight(16)}'
+        '${blurred.toStringAsFixed(2).padLeft(12)}'
+        '${structure.toStringAsFixed(0).padLeft(11)}'
+        '${plain.toStringAsFixed(2).padLeft(11)}'
+        '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MB'.padLeft(11)}'
+        '${'${rate.toStringAsFixed(1)} Mpx/s'.padLeft(14)}',
+      );
     }
   }
 
-  print('\nLower error is better. **Blurred error is the one that matters** - '
-      'plain per-pixel\nerror rewards not dithering at all, which is why '
-      'both are shown.');
+  print(
+    '\nLower error is better. **Blurred error is the one that matters** - '
+    'plain per-pixel\nerror rewards not dithering at all, which is why '
+    'both are shown.',
+  );
 
   // --- the Bayer-versus-blue-noise question, isolated ----------------------
   //
@@ -275,9 +278,13 @@ Future<void> main() async {
   // separate a Bayer grid from blue noise. On a flat field there is nothing to
   // see except what the dither itself put there — which is exactly the case
   // where a regular grid is most objectionable.
-  print('\n\nflat mid-tone field - the only structure here is the dither\'s own\n');
-  print('${'dither'.padRight(16)}${'structure'.padLeft(11)}'
-      '${'output'.padLeft(11)}');
+  print(
+    '\n\nflat mid-tone field - the only structure here is the dither\'s own\n',
+  );
+  print(
+    '${'dither'.padRight(16)}${'structure'.padLeft(11)}'
+    '${'output'.padLeft(11)}',
+  );
 
   final table = uniformPalette(3);
   final flat = Uint8List(side * side * 3);
@@ -310,8 +317,10 @@ Future<void> main() async {
     await gif.addRgbFrame(flat);
     await gif.close();
 
-    print('${name.padRight(16)}'
-        '${spectralPeak(original: flat, reconstructed: shown, side: side).toStringAsFixed(0).padLeft(11)}'
-        '${'${(sink.bytes / 1024).toStringAsFixed(1)} kB'.padLeft(11)}');
+    print(
+      '${name.padRight(16)}'
+      '${spectralPeak(original: flat, reconstructed: shown, side: side).toStringAsFixed(0).padLeft(11)}'
+      '${'${(sink.bytes / 1024).toStringAsFixed(1)} kB'.padLeft(11)}',
+    );
   }
 }

@@ -126,9 +126,9 @@ void main() {
         colors: colors,
         bufferSize: GifWriter.minBufferSize,
       );
-      final pixels = Uint8List.fromList(
-        <int>[for (var i = 0; i < side * side; i++) (i * 5 + i ~/ 7) % 4],
-      );
+      final pixels = Uint8List.fromList(<int>[
+        for (var i = 0; i < side * side; i++) (i * 5 + i ~/ 7) % 4,
+      ]);
       await gif.addIndexedFrame(pixels);
       await gif.close();
 

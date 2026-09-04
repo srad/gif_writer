@@ -12,7 +12,7 @@
   <a href="https://pub.dev/packages/gif_writer/score"><img src="https://img.shields.io/pub/points/gif_writer?logo=dart&logoColor=white" alt="pub points"></a>
   <a href="https://pub.dev/packages/gif_writer/score"><img src="https://img.shields.io/pub/likes/gif_writer?logo=dart&logoColor=white" alt="likes"></a>
   <a href="https://github.com/srad/gif_writer/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licence"></a>
-  <img src="https://img.shields.io/badge/SDK-%E2%89%A5%203.4-0175C2?logo=dart&logoColor=white" alt="Dart SDK 3.4+">
+  <img src="https://img.shields.io/badge/SDK-%E2%89%A5%203.7-0175C2?logo=dart&logoColor=white" alt="Dart SDK 3.7+">
   <img src="https://img.shields.io/badge/platforms-all-success" alt="all platforms">
   <img src="https://img.shields.io/badge/dependencies-none-success" alt="no dependencies">
 </p>
@@ -53,8 +53,13 @@ And the number that is not a percentage:
 
 | | held in memory, 60 frames | held in memory, 1000 frames |
 | :-- | --: | --: |
-| **gif_writer** | **0.06 MB** | **0.06 MB** |
+| **gif_writer** | **0.19 MB** | **0.19 MB** |
 | `package:image` | 5.19 MB | ~87 MB |
+
+That 0.19 MB is the whole fixed overhead of the indexed path — a 64 kB staging
+buffer plus the 128 kB LZW string table — and it is the same number as
+[Where the speed comes from](#where-the-speed-comes-from) below. Neither column
+counts the caller's own frame buffer, which both encoders need.
 
 <p align="center">
   <picture>
@@ -365,8 +370,12 @@ you supplied. What is *not* here yet is choosing that table for you — see 0.3.
 | --- | --- |
 | **0.1.0** ✅ | Streaming container, LZW, indexed frames, any sink |
 | **0.2.0** ✅ | RGB and RGBA input, mapped to your table, with five dithers |
+| **0.2.1** ✅ | Loop-count and dictionary-test fixes; LZW resets without zeroing its table |
 | 0.3.0 | Octree quantisation — deriving the palette, global or per frame |
 | 0.4.0 | Transparency, disposal methods, frame diffing |
+
+The full picture — open work, structural decisions, and what was ruled out and why — is in
+[ROADMAP.md](ROADMAP.md).
 
 Quantisation is deliberately not first: it is the part with a memory cost of its own, and getting the
 streaming container and the mapping right matters more than accepting more input formats early.

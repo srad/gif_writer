@@ -32,12 +32,14 @@ void main() {
   test('an index past the end of the table is refused', () async {
     final gif = writerFor(colours: 4);
     await expectLater(
-      gif.addIndexedFrame(frame(<int>[
-        0, 1, 2, 3, //
-        0, 1, 2, 3,
-        0, 1, 2, 9, // 9 is not a colour
-        0, 1, 2, 3,
-      ])),
+      gif.addIndexedFrame(
+        frame(<int>[
+          0, 1, 2, 3, //
+          0, 1, 2, 3,
+          0, 1, 2, 9, // 9 is not a colour
+          0, 1, 2, 3,
+        ]),
+      ),
       throwsArgumentError,
     );
   });
@@ -47,12 +49,14 @@ void main() {
     // report. The precise pass exists to answer *which*.
     final gif = writerFor(colours: 4);
     await expectLater(
-      gif.addIndexedFrame(frame(<int>[
-        0, 1, 2, 3, //
-        0, 1, 2, 3,
-        0, 1, 2, 3,
-        0, 1, 7, 3,
-      ])),
+      gif.addIndexedFrame(
+        frame(<int>[
+          0, 1, 2, 3, //
+          0, 1, 2, 3,
+          0, 1, 2, 3,
+          0, 1, 7, 3,
+        ]),
+      ),
       throwsA(
         isA<ArgumentError>().having(
           (e) => e.message.toString(),

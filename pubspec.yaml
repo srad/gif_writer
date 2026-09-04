@@ -1,6 +1,6 @@
 name: gif_writer
 description: A high-performance, low-memory GIF encoder. Streams frames straight to a sink as they arrive, so memory stays flat however long the animation runs.
-version: 0.2.0
+version: 0.2.1
 repository: https://github.com/srad/gif_writer
 issue_tracker: https://github.com/srad/gif_writer/issues
 
@@ -11,7 +11,10 @@ topics:
   - animation
 
 environment:
-  sdk: ^3.4.0
+  # 3.7 rather than 3.4 so `dart format` applies the tall style this package is
+  # written in. Under 3.4 the formatter falls back to the legacy short style and
+  # reformats almost every file into a shape nothing here was authored in.
+  sdk: ^3.7.0
 
 dev_dependencies:
   # The oracle, and only ever that: tests encode with this package and decode

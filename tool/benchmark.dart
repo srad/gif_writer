@@ -38,8 +38,7 @@ Future<void> main() async {
   const colours = 32;
 
   final table = GifColorTable.packed(<int>[
-    for (var i = 0; i < colours; i++)
-      (i * 255 ~/ (colours - 1)) * 0x010101,
+    for (var i = 0; i < colours; i++) (i * 255 ~/ (colours - 1)) * 0x010101,
   ]);
 
   // Three workloads, because one number hides the range. Noise and a gradient
@@ -54,12 +53,7 @@ Future<void> main() async {
     // the first candidate measured always looks slowest.
     for (var warm = 0; warm < 2; warm++) {
       final sink = CountingSink();
-      final gif = GifWriter(
-        sink,
-        width: size,
-        height: size,
-        colors: table,
-      );
+      final gif = GifWriter(sink, width: size, height: size, colors: table);
       for (var f = 0; f < 8; f++) {
         await gif.addIndexedFrame(frame);
       }
@@ -95,8 +89,7 @@ Future<void> main() async {
       '${name.padRight(10)}'
       '${'${rate(times[trials ~/ 2]).toStringAsFixed(1)} Mpx/s'.padLeft(14)}'
       '${'${rate(times.last).toStringAsFixed(1)} - '
-              '${rate(times.first).toStringAsFixed(1)}'
-          .padLeft(18)}'
+          '${rate(times.first).toStringAsFixed(1)}'.padLeft(18)}'
       '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MB'.padLeft(11)}'
       '${adds.toString().padLeft(8)}',
     );
@@ -104,8 +97,10 @@ Future<void> main() async {
 
   print('$frames frames of $size x $size, $colours colours');
   print('median of 9 trials, range alongside\n');
-  print('${'workload'.padRight(10)}${'rate (median)'.padLeft(14)}'
-      '${'range'.padLeft(18)}${'output'.padLeft(11)}${'writes'.padLeft(8)}');
+  print(
+    '${'workload'.padRight(10)}${'rate (median)'.padLeft(14)}'
+    '${'range'.padLeft(18)}${'output'.padLeft(11)}${'writes'.padLeft(8)}',
+  );
   await run('noise', noise);
   await run('photo', photo);
   await run('smooth', smooth);

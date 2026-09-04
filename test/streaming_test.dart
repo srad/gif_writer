@@ -21,8 +21,7 @@ import 'round_trip_test.dart' show RecordingSink;
 /// deterministic and prove the same thing structurally: bytes already handed to
 /// the sink cannot also be held.
 void main() {
-  GifColorTable twoColours() =>
-      GifColorTable.packed(<int>[0x000000, 0xFFFFFF]);
+  GifColorTable twoColours() => GifColorTable.packed(<int>[0x000000, 0xFFFFFF]);
 
   GifColorTable grays(int count) => GifColorTable.packed(<int>[
     for (var i = 0; i < count; i++) (i * 255 ~/ (count - 1)) * 0x010101,
@@ -72,12 +71,7 @@ void main() {
     const side = 96;
     const headerOverheadPerFrame = 18;
     final sink = RecordingSink();
-    final gif = GifWriter(
-      sink,
-      width: side,
-      height: side,
-      colors: grays(16),
-    );
+    final gif = GifWriter(sink, width: side, height: side, colors: grays(16));
 
     Uint8List noise(int phase) => Uint8List.fromList(<int>[
       for (var i = 0; i < side * side; i++) (i * 7 + i ~/ 5 + phase) % 16,
@@ -149,12 +143,7 @@ void main() {
     // compressed data overflows the buffer.
     const side = 32;
     final sink = RecordingSink();
-    final gif = GifWriter(
-      sink,
-      width: side,
-      height: side,
-      colors: grays(16),
-    );
+    final gif = GifWriter(sink, width: side, height: side, colors: grays(16));
 
     const frames = 20;
     for (var f = 0; f < frames; f++) {
@@ -217,25 +206,23 @@ void main() {
     );
   });
 
-  test('a writer closed with no frames still produces a readable file', () async {
-    // An empty stream is a legitimate input — a recording stopped before its
-    // first capture — and throwing here would strand the caller with a
-    // half-written file instead of an empty animation.
-    final sink = RecordingSink();
-    final gif = GifWriter(
-      sink,
-      width: 4,
-      height: 4,
-      colors: twoColours(),
-    );
-    await gif.close();
+  test(
+    'a writer closed with no frames still produces a readable file',
+    () async {
+      // An empty stream is a legitimate input — a recording stopped before its
+      // first capture — and throwing here would strand the caller with a
+      // half-written file instead of an empty animation.
+      final sink = RecordingSink();
+      final gif = GifWriter(sink, width: 4, height: 4, colors: twoColours());
+      await gif.close();
 
-    expect(sink.closed, isTrue);
-    expect(gif.frameCount, 0);
-    final bytes = sink.result;
-    expect(bytes.sublist(0, 6), <int>[0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
-    expect(bytes.last, 0x3B, reason: 'no trailer');
-  });
+      expect(sink.closed, isTrue);
+      expect(gif.frameCount, 0);
+      final bytes = sink.result;
+      expect(bytes.sublist(0, 6), <int>[0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+      expect(bytes.last, 0x3B, reason: 'no trailer');
+    },
+  );
 
   test('a stream of frames pipes straight in', () async {
     // `GifWriter` is a `StreamConsumer`, which is the shape that lets a caller
@@ -270,12 +257,7 @@ void main() {
     // under 20 ms is a fiction the format cannot carry, which the API documents
     // rather than silently clamps.
     final sink = RecordingSink();
-    final gif = GifWriter(
-      sink,
-      width: 2,
-      height: 2,
-      colors: twoColours(),
-    );
+    final gif = GifWriter(sink, width: 2, height: 2, colors: twoColours());
     await gif.addIndexedFrame(
       Uint8List.fromList(<int>[0, 1, 1, 0]),
       delay: const Duration(milliseconds: 40),

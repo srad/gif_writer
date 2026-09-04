@@ -76,7 +76,8 @@ void main() {
     expect(
       blue,
       lessThan(white / 10),
-      reason: 'low-frequency energy $blue is not far below white noise $white; '
+      reason:
+          'low-frequency energy $blue is not far below white noise $white; '
           'the committed table is not blue noise',
     );
   });
@@ -93,8 +94,9 @@ void main() {
       for (var x = 0; x < blueNoiseSide; x++) {
         final here = blueNoiseRanks[y * blueNoiseSide + x] ~/ bucket;
         final right =
-            blueNoiseRanks[y * blueNoiseSide + ((x + 1) & (blueNoiseSide - 1))] ~/
-                bucket;
+            blueNoiseRanks[y * blueNoiseSide +
+                ((x + 1) & (blueNoiseSide - 1))] ~/
+            bucket;
         if (here == right) adjacent++;
       }
     }

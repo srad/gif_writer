@@ -72,7 +72,9 @@ void main() {
     });
 
     test('reports a miss as -1', () {
-      final mapper = ColorMapper(GifColorTable.packed(<int>[0x000000, 0xFFFFFF]));
+      final mapper = ColorMapper(
+        GifColorTable.packed(<int>[0x000000, 0xFFFFFF]),
+      );
       expect(mapper.exactIndexOf(0x808080), -1);
     });
 
@@ -224,4 +226,3 @@ void main() {
     expect(mapper.blueAt(1), 0x56);
   });
 }
-

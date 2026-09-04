@@ -29,8 +29,26 @@ class GifRepeat {
   /// code for **forever**. Asking for a single play produced an endless loop,
   /// and nothing about the file looked wrong: every pixel decoded perfectly and
   /// it simply never stopped.
-  factory GifRepeat.times(int times) =>
-      times <= 1 ? once : GifRepeat._(times - 1);
+  ///
+  /// **The upper bound is refused rather than truncated**, for the same reason.
+  /// The Netscape block stores the count in two bytes, so anything past 65536
+  /// total plays cannot be written: `times(70000)` would store 69999 and emit
+  /// `69999 & 0xFFFF` — a file that asks for 4463 plays, decodes perfectly, and
+  /// is wrong in the one way a round-trip test cannot see.
+  factory GifRepeat.times(int times) {
+    if (times > _maxTimes) {
+      throw ArgumentError.value(
+        times,
+        'times',
+        'at most $_maxTimes; the Netscape block counts plays in two bytes',
+      );
+    }
+    return times <= 1 ? once : GifRepeat._(times - 1);
+  }
+
+  /// The most total plays the two-byte Netscape count can express: it holds
+  /// `times - 1`, so 65536 plays stores 65535.
+  static const int _maxTimes = 0xFFFF + 1;
 
   /// What goes in the Netscape block: zero means forever, otherwise the number
   /// of *additional* plays.
@@ -181,7 +199,9 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// The fixed blocks, filled in place rather than rebuilt as a list literal per
   /// frame.
   final Uint8List _control = Uint8List.fromList(<int>[
-    0x21, 0xF9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // The trailing `//` holds this on one line; without it the formatter gives
+    // each byte a line of its own, which hides the block's shape.
+    0x21, 0xF9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, //
   ]);
   final Uint8List _descriptor = Uint8List(10);
 
@@ -311,11 +331,12 @@ class GifWriter implements StreamConsumer<GifFrame> {
 
   Uint8List _map(Uint8List rgb) {
     final mapper = _mapper ??= ColorMapper(_colors);
-    final runner = _runner ??= DitherRunner(
-      dither: _dither,
-      mapper: mapper,
-      width: _width,
-    );
+    final runner =
+        _runner ??= DitherRunner(
+          dither: _dither,
+          mapper: mapper,
+          width: _width,
+        );
     final out = _scratch ??= Uint8List(_width * _height);
     runner.mapRgb(rgb: rgb, out: out);
     return out;
@@ -399,7 +420,11 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // is the only way GIF expresses "repeat". Omitted entirely for a single
     // play, because a Netscape block saying "loop once more" is not the same
     // thing as no block at all.
-    if (_repeat != GifRepeat.once) {
+    //
+    // Tested on the count rather than on identity with `GifRepeat.once`: that
+    // only works while `once` is the sole instance holding a negative count,
+    // which is true today and is not a property anything enforces.
+    if (_repeat.count >= 0) {
       _out.add(<int>[
         0x21, 0xFF, 0x0B, //
         0x4E, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, // NETSCAPE
@@ -415,7 +440,10 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // Hundredths, rounded rather than truncated: at 15 ms truncation loses a
     // fifth of the frame's time, and over a few hundred frames the animation
     // visibly drifts against whatever it was timed to.
-    final centiseconds = (delay.inMicroseconds / 10000).round().clamp(0, 0xFFFF);
+    final centiseconds = (delay.inMicroseconds / 10000).round().clamp(
+      0,
+      0xFFFF,
+    );
     // Filled in place: the two bytes that vary are the delay, and the rest of
     // this block is the same for every frame of every animation.
     _control[4] = centiseconds & 0xFF;

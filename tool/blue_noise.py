@@ -165,9 +165,15 @@ const int blueNoiseSide = {SIDE};
 
 /// Ranks 0..{rank.size - 1}, row-major.
 ///
-/// Built once, lazily: a `Uint8List` cannot be `const`, and {rank.size} entries as a
+/// Built once, lazily: a `Uint16List` cannot be `const`, and {rank.size} entries as a
 /// const `List<int>` would be both slower to index and larger in the snapshot.
+///
+/// The formatter is switched off around the literal: left to itself it gives
+/// each of the {rank.size} ranks a line of its own, turning a 29-line file into a
+/// {rank.size + 26}-line one for no gain to anybody reading it.
+// dart format off
 final Uint16List blueNoiseRanks = Uint16List.fromList(const <int>[
   {values},
 ]);
+// dart format on
 """)

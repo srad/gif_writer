@@ -86,7 +86,11 @@ void main() {
     test('maps an exact palette colour to that entry', () {
       // Nothing to dither: the colour is already in the table. Every dither must
       // leave it alone rather than mixing it with a neighbour.
-      final rgb = flat(value: 0x11, width: 8, height: 8); // greys[1] is 0x111111
+      final rgb = flat(
+        value: 0x11,
+        width: 8,
+        height: 8,
+      ); // greys[1] is 0x111111
       for (final dither in all) {
         final out = mapWith(dither: dither, rgb: rgb, width: 8);
         expect(out.toSet(), <int>{1}, reason: '$dither disturbed an exact hit');
@@ -197,7 +201,11 @@ void main() {
       // rather than through the code under test: over a large flat field the
       // dithered result must average out to roughly the input value.
       final rgb = flat(value: 0x80, width: 64, height: 64);
-      final out = mapWith(dither: GifDither.floydSteinberg, rgb: rgb, width: 64);
+      final out = mapWith(
+        dither: GifDither.floydSteinberg,
+        rgb: rgb,
+        width: 64,
+      );
       final mapper = ColorMapper(greys);
       var sum = 0;
       for (final index in out) {

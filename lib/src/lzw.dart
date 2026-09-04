@@ -38,11 +38,25 @@ const int _maxCodes = 1 << _maxCodeWidth;
 /// | **16384** | **128 kB** | **59.7** | **89.5** | **142.9** |
 /// | 32768 | 256 kB | 60.9 | 88.2 | 137.0 |
 ///
-/// Doubling again buys nothing — clearing a bigger table between frames costs
-/// about what the shorter probes save — so 128 kB of `Int32List` is the price,
-/// allocated once for the whole animation rather than per frame.
+/// Those three rows were measured when every reset **zeroed** this table, which
+/// is why 32768 looked like a wash: doubling the table doubled a clear that ran
+/// ten to seventeen times a frame, cancelling the shorter probes. Epoch stamping
+/// (see [_hashKeys]) removed that cost, so the comparison no longer holds and
+/// **the sizes want re-measuring** — a bigger table is now nearly free between
+/// frames and may well win.
+///
+/// 128 kB of `Int32List` is the current price, allocated once for the whole
+/// animation rather than per frame.
 const int _hashSize = 16384;
 const int _hashMask = _hashSize - 1;
+
+/// Where the epoch sits in a slot, above the 21 bits `key + 1` needs.
+const int _epochShift = 21;
+
+/// One past the last usable epoch. At 1023 the largest slot value is
+/// `(1023 << 21) + 2^20` = 2,146,435,072, inside `Int32List`'s positive range —
+/// which is the property that keeps this exact on the web as well as the VM.
+const int _maxEpoch = 1023;
 
 /// Compresses frames into GIF image-data sections.
 ///
@@ -56,10 +70,25 @@ final class GifLzwEncoder {
     : _hashKeys = Int32List(_hashSize),
       _hashCodes = Int32List(_hashSize);
 
-  /// `key + 1` per slot, so a plain zero means "empty" and the table can be
-  /// cleared with a single `fillRange` rather than a loop of sentinels.
+  /// `(epoch << 21) | (key + 1)` per slot, so the table is **retired rather
+  /// than cleared**: bumping [_epoch] makes every existing entry test as empty
+  /// without touching memory.
+  ///
+  /// The dictionary is reset far more often than once per frame — it also
+  /// resets whenever the 4096 codes run out — and measured at 256x256 that is
+  /// 10 resets a frame on noise at 32 colours and 17 at 256. Each `fillRange`
+  /// of this table costs 13.6 us, which was 11% of a noise frame spent zeroing
+  /// memory nobody was going to read.
+  ///
+  /// `key + 1` needs 21 bits (`key` is under 2^20, see [encode]), leaving ten
+  /// for the epoch: 1023 generations before it has to recycle, which at the
+  /// worst measured rate is one real clear per sixty frames.
   final Int32List _hashKeys;
   final Int32List _hashCodes;
+
+  /// Which generation of the string table [_hashKeys] currently holds. Never
+  /// zero, so a freshly allocated — all-zero — table reads as retired.
+  int _epoch = 1;
 
   /// Where the sub-block being filled starts in the staging buffer.
   ///
@@ -98,7 +127,9 @@ final class GifLzwEncoder {
     _bitCount = 0;
 
     out.addByte(minCodeSize);
-    _resetTable();
+    // Reassigned wherever `_resetTable` is called again, including inside the
+    // loop below — see the warning on that method.
+    var base = _resetTable();
     _writeCode(_clearCode);
 
     if (indices.isNotEmpty) {
@@ -127,22 +158,29 @@ final class GifLzwEncoder {
         // in clusters. Forced odd, so it is coprime to a power-of-two table and
         // the probe still visits every slot.
         final displacement = ((key >> 3) | 1) & _hashMask;
+        // Stamped with the current generation, and hoisted: the old code
+        // recomputed `key + 1` on every probe iteration, so carrying the epoch
+        // costs nothing per probe and one add per pixel.
+        final want = base + key + 1;
         var found = false;
         while (true) {
           final entry = _hashKeys[slot];
-          if (entry == key + 1) {
+          if (entry == want) {
             prefix = _hashCodes[slot];
             found = true;
             break;
           }
-          if (entry == 0) break; // empty slot: not present, insert here
+          // Anything below the current base belongs to a retired generation, or
+          // is the zero of a never-used slot. Either way it is free to take, and
+          // this is the same single comparison `entry == 0` used to be.
+          if (entry < base) break;
           slot = (slot + displacement) & _hashMask;
         }
         if (found) continue;
 
         _writeCode(prefix);
         if (_nextCode < _maxCodes) {
-          _hashKeys[slot] = key + 1;
+          _hashKeys[slot] = want;
           _hashCodes[slot] = _nextCode;
           _nextCode++;
           if (_nextCode > (1 << _codeWidth) && _codeWidth < _maxCodeWidth) {
@@ -153,9 +191,10 @@ final class GifLzwEncoder {
             _codeWidth++;
           }
         } else {
-          // Full. Start again rather than widen past twelve bits.
+          // Full. Start again rather than widen past twelve bits. The clear
+          // code goes out at the *old* width, before the reset changes it.
           _writeCode(_clearCode);
-          _resetTable();
+          base = _resetTable();
         }
         prefix = pixel;
       }
@@ -168,10 +207,24 @@ final class GifLzwEncoder {
     out.addByte(0); // the block stream's terminator
   }
 
-  void _resetTable() {
-    _hashKeys.fillRange(0, _hashSize, 0);
+  /// Retires the string table and returns the new epoch base.
+  ///
+  /// **Callers must use the returned value**, not one cached from earlier: this
+  /// is called from inside [encode]'s pixel loop whenever the dictionary fills,
+  /// so a base hoisted above that loop goes stale mid-frame and every probe
+  /// after it reads the wrong generation — a corrupt stream with nothing thrown.
+  int _resetTable() {
+    if (_epoch >= _maxEpoch) {
+      // Recycled. This is the only place the table is actually zeroed, and it
+      // is also exactly what every reset used to do.
+      _hashKeys.fillRange(0, _hashSize, 0);
+      _epoch = 1;
+    } else {
+      _epoch++;
+    }
     _codeWidth = _minCodeSize + 1;
     _nextCode = _endCode + 1;
+    return _epoch << _epochShift;
   }
 
   void _flushBlock() {
@@ -214,6 +267,12 @@ final class GifLzwEncoder {
 ///
 /// Two is the floor even for a one- or two-colour table: the format has no
 /// one-bit code size.
+///
+/// **Not the same floor as `GifColorTable.bitsPerPixel`, which is 1.** That one
+/// sizes the colour table written into the header and a two-entry table is
+/// legal; this one sizes the LZW codes and a one-bit code size is not. They look
+/// like the same log2 and are two different rules — making them agree breaks the
+/// file.
 int gifMinCodeSize({required int colorCount}) {
   var bits = 2;
   while ((1 << bits) < colorCount) {

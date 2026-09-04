@@ -1,3 +1,45 @@
+## 0.2.1
+
+Two defects and a test that was not testing what it said. **Output is byte-identical to 0.2.0** on
+every workload — verified by fingerprinting the encoded bytes of six benchmark workloads plus a
+70-frame animation, before and after every change here.
+
+### Fixed
+
+- **`GifRepeat.times(n)` above 65536 silently wrote the wrong loop count.** The Netscape block counts
+  plays in two bytes, so `times(70000)` stored 69999 and emitted its low sixteen bits — a file that
+  asks for 4463 plays, decodes perfectly, and is wrong in the one way a round-trip test cannot see.
+  The same shape as the `times(1)` bug in 0.1.1. It now throws rather than truncating, which is
+  breaking only for callers who were already getting a file they did not ask for.
+- **The test named "large enough to refill the dictionary" never refilled the dictionary.** Its
+  pattern compressed so well that 40,000 pixels came to under 4,096 codes, so `_nextCode` never
+  reached the limit and the dictionary-full path — the one most able to produce a silently corrupt
+  file — had no working test at all. Confirmed by tampering: corrupt that path and the test still
+  passed. It now uses seeded pseudo-noise, which refills four times over at the same size, and it
+  fails when that path is broken.
+- The looping block is chosen on `count`, not on identity with `GifRepeat.once`, which held only
+  while `once` was the sole instance carrying a negative count.
+- The README's headline "held in memory" figure said 0.06 MB against its own overhead table's
+  ~192 kB three sections below. 0.06 MB was the largest single sink handover — the staging buffer
+  alone, blind to the 128 kB LZW table held just as permanently. Both now read 0.19 MB.
+
+### Changed
+
+- **The LZW string table is retired by a generation counter instead of being zeroed.** The dictionary
+  resets far more often than once per frame — measured at 256x256, ten times a frame on noise at 32
+  colours and seventeen at 256 — and each reset zeroed 64 kB. Slots now carry an epoch, so a reset is
+  an increment and the table is genuinely cleared only every 1023 generations.
+  Measured on `tool/benchmark.dart`, AOT (`dart compile exe`), interleaved against 0.2.0: **+47% on
+  noise, +26% on photo, +24% on a gradient.** Under the JIT the same comparison is inside the
+  run-to-run spread and is not claimed. Encoded bytes are unchanged either way.
+- Minimum SDK is now 3.7, so `dart format` applies the tall style this package is written in. Callers
+  on 3.4 to 3.6 resolve to 0.2.0 and are otherwise unaffected.
+
+### Added
+
+- A round-trip test over an animation long enough to recycle the LZW generation counter — a branch
+  that would otherwise first run about sixty frames into a real recording.
+
 ## 0.2.0
 
 RGB and RGBA input, mapped onto the colour table you supply, with five dithers. **The indexed path is

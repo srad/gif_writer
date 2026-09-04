@@ -51,9 +51,6 @@ final class BufferedByteSink {
   final Uint8List _buffer;
   int _length = 0;
 
-  /// Bytes handed to the underlying sink so far, for tests and benchmarks.
-  int flushedBytes = 0;
-
   /// How many bytes are staged but not yet flushed.
   int get length => _length;
 
@@ -115,7 +112,6 @@ final class BufferedByteSink {
     // `sublist` copies, which is required: the buffer is about to be reused and
     // the sink may hold the reference until it has written it.
     _sink.add(_buffer.sublist(0, _length));
-    flushedBytes += _length;
     _length = 0;
   }
 
