@@ -49,6 +49,23 @@ void main() {
       // believes, and every index past it would then be out of range.
       expect(() => GifColorTable.rgb(<int>[1, 2, 3, 4]), throwsArgumentError);
     });
+
+    test('a channel outside 0..255 is refused, not truncated', () {
+      // `Uint8List.fromList` would keep only the low eight bits — 300 becomes 44,
+      // -1 becomes 255 — a wrong colour in the header with nothing thrown.
+      expect(() => GifColorTable.rgb(<int>[300, 0, 0]), throwsArgumentError);
+      expect(() => GifColorTable.rgb(<int>[0, -1, 0]), throwsArgumentError);
+    });
+
+    test('a packed value outside 0..0xFFFFFF is refused, not masked', () {
+      // High bits (an accidental alpha byte) would otherwise be dropped silently,
+      // and two inputs colliding to one 24-bit value would seed a duplicate.
+      expect(
+        () => GifColorTable.packed(<int>[0xFF123456]),
+        throwsArgumentError,
+      );
+      expect(() => GifColorTable.packed(<int>[-1]), throwsArgumentError);
+    });
   });
 
   group('padding to a power of two', () {

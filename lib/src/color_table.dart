@@ -23,6 +23,19 @@ class GifColorTable {
     if (count == 0 || count > 256) {
       throw ArgumentError.value(count, 'rgb', 'needs 1 to 256 colours');
     }
+    // Checked rather than left to `Uint8List.fromList`, which silently keeps the
+    // low eight bits: 300 becomes 44 and -1 becomes 255, a wrong colour in the
+    // header with nothing thrown. The rest of this package refuses bad input
+    // rather than writing a file that decodes to something the caller never gave.
+    for (var i = 0; i < rgb.length; i++) {
+      if (rgb[i] < 0 || rgb[i] > 255) {
+        throw ArgumentError.value(
+          rgb[i],
+          'rgb[$i]',
+          'each channel must be 0 to 255',
+        );
+      }
+    }
     return GifColorTable._(Uint8List.fromList(rgb), count);
   }
 
@@ -30,6 +43,17 @@ class GifColorTable {
   factory GifColorTable.packed(List<int> colors) {
     final rgb = Uint8List(colors.length * 3);
     for (var i = 0; i < colors.length; i++) {
+      // Refused rather than masked with `& 0xFF`: an accidental alpha byte
+      // (0xFF123456) or a negative would otherwise be dropped silently, and two
+      // distinct inputs colliding to one 24-bit value would seed a duplicate
+      // colour — which the ordered dither then has to treat as "no choice".
+      if (colors[i] < 0 || colors[i] > 0xFFFFFF) {
+        throw ArgumentError.value(
+          colors[i],
+          'colors[$i]',
+          'must be a packed 0xRRGGBB value, 0 to 0xFFFFFF',
+        );
+      }
       rgb[i * 3] = (colors[i] >> 16) & 0xFF;
       rgb[i * 3 + 1] = (colors[i] >> 8) & 0xFF;
       rgb[i * 3 + 2] = colors[i] & 0xFF;

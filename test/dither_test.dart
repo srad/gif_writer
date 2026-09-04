@@ -109,6 +109,23 @@ void main() {
         expect(out.toSet(), <int>{0}, reason: '$dither on a single colour');
       }
     });
+
+    test('a palette that repeats a colour cannot divide by zero', () {
+      // A palette is allowed to hold the same colour at two indices, so
+      // `candidates` can hand the ordered dither two *distinct* indices whose
+      // channels are identical. Projecting between them divides by their squared
+      // distance, which is then zero — a crash the `best == second` guard, which
+      // compares indices, does not catch. The between-colour field lands exactly
+      // on the duplicated pair.
+      final rgb = flat(value: 0x20, width: 8, height: 8);
+      final colors = GifColorTable.packed(<int>[0x101010, 0x101010, 0xF0F0F0]);
+      for (final dither in all) {
+        final out = mapWith(dither: dither, rgb: rgb, width: 8, colors: colors);
+        for (final index in out) {
+          expect(index, lessThan(3), reason: '$dither produced $index');
+        }
+      }
+    });
   });
 
   group('dithering actually happens', () {

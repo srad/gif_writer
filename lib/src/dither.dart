@@ -216,9 +216,18 @@ class DitherRunner {
         final sb = _mapper.blueAt(second) - bb;
 
         // How far along `best -> second` the true colour projects, in 4096ths.
-        // The denominator cannot be zero: the two entries differ, or `best ==
-        // second` caught it above.
+        //
+        // The denominator is zero when the two entries share a colour: a palette
+        // is allowed to repeat one, so `candidates` can return two distinct
+        // *indices* whose channels are identical, which the `best == second`
+        // guard above — comparing indices — does not catch. There is nothing to
+        // project onto and no choice to make, so take `best`; the output is the
+        // same colour either way.
         final denominator = sr * sr + sg * sg + sb * sb;
+        if (denominator == 0) {
+          out[i] = best;
+          continue;
+        }
         var t =
             (((r - br) * sr + (g - bg) * sg + (b - bb) * sb) * 4096) ~/
             denominator;
