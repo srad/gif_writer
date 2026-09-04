@@ -119,4 +119,8 @@ final class BufferedByteSink {
     flush();
     await _sink.close();
   }
+
+  /// Completes when the wrapped sink is done — the seam through which a sink's
+  /// asynchronously-reported error reaches the writer.
+  Future<void> get done => _sink.done;
 }

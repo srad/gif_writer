@@ -45,8 +45,26 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [x] **Benchmarks report AOT.** `tool/benchmark.dart` and `tool/compare.dart` build with
       `dart compile exe` (JIT kept as a documented quick path); the README's throughput, comparison
       and memory numbers are regenerated as AOT medians. Fixed a stale hardcoded `0.06 MB` label in
-      the memory chart, blind to the value beside it (the deeper `compare.dart` `peakHeld` fix is
-      still open below).
+      the memory chart, blind to the value beside it (the deeper `compare.dart` `peakHeld` fix landed
+      in 0.3.2).
+
+### 0.3.2
+- [x] **`GifWriter.done`, and `close()` awaits it.** Forwards the sink's `done`, so an out-of-band sink
+      error — a dropped socket, reported after the `add` that caused it returned — reaches a streaming
+      caller; `close()` awaits it too, so a caller who only awaits `close()` still sees it. The piece
+      the README's "write to a socket" recipe was missing.
+- [x] **Value equality on `GifColorTable`, `GifRepeat`, `GifDither`.** `==` / `hashCode` over their
+      contents — colours+length, play count, and kind+side+matrix — so a caller can compare them or
+      key a cache on them.
+- [x] **`compare.dart` reports the true fixed overhead.** `CountingSink.peakHeld` measured the largest
+      single handover — the staging buffer alone, ~0.06 MB — and could not see the 256 kB LZW table
+      held just as permanently. `runOurs` now reports 64 kB + 256 kB = 0.31 MB, flat at any length and
+      matching the README; the dead `peakHeld` is gone.
+- [x] **Documented the concurrency guarantee** on the `GifWriter` class doc: concurrent `add*Frame` is
+      safe because every mutation of `_scratch`, `_lzw` and `_out` happens synchronously before the
+      single `await`, and moving any `await` earlier would silently break it.
+- [x] **`GifColorTable.rgb` confirmed already validating** each channel to 0–255 (the roadmap item was
+      stale); no code change.
 
 ### Not yet tagged
 - [ ] **`v0.2.1` has no git tag.** `0.2.1` is published on pub.dev and `main` is at the right commit,
@@ -61,17 +79,6 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
       The README asserts "everything runs on the VM and under Chrome" with nothing enforcing it.
       This is the highest-value open item: every guard in this package is only as good as something
       running it.
-- [ ] **`compare.dart` measures the wrong memory.** `CountingSink.peakHeld` records the largest
-      single handover to the sink, which is the staging buffer alone — it cannot see the 128 kB LZW
-      table held just as permanently. That is where the README's wrong 0.06 MB came from. Report the
-      encoder's true fixed overhead instead.
-- [ ] **Document the concurrency guarantee.** Concurrent `add*Frame` calls are safe, because every
-      mutation of `_scratch`, `_lzw` and `_out` happens synchronously before the single
-      `await _onFlush`. That is not obvious and nothing states it; a future `await` moved earlier
-      would silently break it.
-- [ ] **`GifColorTable.rgb` truncates silently.** It takes `List<int>` and hands it to
-      `Uint8List.fromList`, so a caller passing values outside 0–255 gets them wrapped rather than
-      rejected. `GifColorTable.packed` masks deliberately; this one should validate.
 - [ ] Consider `lints: ^5.0.0` (needs Dart ^3.5.0, so it fits the 3.7 floor; `^6.0.0` needs ^3.8.0).
 
 ## Structural — changes public API shape, needs a decision
@@ -86,10 +93,6 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [ ] **Move `GifRepeat` out of `writer.dart`** into `repeat.dart`. It is exported public API with
       nothing to do with writing mechanics; `GifDither`, `GifColorTable` and `GifFrame` each have
       their own file.
-- [ ] **`==` / `hashCode` on `GifColorTable`, `GifRepeat`, `GifDither`.** All three are value-like
-      and public, and `GifColorTable` is the one a caller would naturally compare or key on.
-- [ ] **Expose `GifWriter.done`.** Sink errors currently reach the caller only through `close()` or
-      `onFlush`. Fine for `toFile`; thin for the "write to a socket" recipe the README advertises.
 
 ## Performance — measured, not assumed
 

@@ -54,6 +54,14 @@ class GifRepeat {
   /// What goes in the Netscape block: zero means forever, otherwise the number
   /// of *additional* plays.
   final int count;
+
+  /// Value equality: two repeats are equal when they encode the same play count.
+  /// `GifRepeat.times(1)` equals [once] because `times` folds it to exactly that.
+  @override
+  bool operator ==(Object other) => other is GifRepeat && other.count == count;
+
+  @override
+  int get hashCode => count.hashCode;
 }
 
 /// Writes an animated GIF to a sink, one frame at a time.
@@ -67,6 +75,17 @@ class GifRepeat {
 ///
 /// The header is written on the **first frame**, not at construction — which is
 /// what lets the writer derive a colour table from that frame when none is given.
+///
+/// **Concurrent `add*Frame` calls are safe**, and emit their frames in call
+/// order. Every mutation of the writer's shared state — `_scratch`, the LZW
+/// encoder, the staging buffer, the header/frame counters — happens
+/// *synchronously*, before the single `await _onFlush?.call()` at the end of
+/// `_writeIndexed`. So a call runs its whole encode-and-flush uninterrupted; by
+/// the time it suspends at that await, the frame's bytes are already out and the
+/// shared buffers are free for the next call to reuse. **This invariant is
+/// load-bearing and fragile: moving any `await` earlier in the write path —
+/// ahead of the encode — would let a second call clobber `_scratch` or the LZW
+/// dictionary mid-frame, with no error to show for it.**
 ///
 /// Three ways in: [addIndexedFrame] takes one byte per pixel and is byte-exact,
 /// while [addRgbFrame] and [addRgbaFrame] map and dither. All three go onto the
@@ -235,6 +254,16 @@ class GifWriter implements StreamConsumer<GifFrame> {
 
   /// How many frames have been written so far.
   int get frameCount => _frames;
+
+  /// Completes when the underlying sink is done, and is how a sink error that
+  /// arrives **asynchronously** — after the `add` that caused it already
+  /// returned — reaches the caller.
+  ///
+  /// For [GifWriter.toFile] the per-frame flush surfaces most failures already;
+  /// this matters for the "write to a socket" case, where a peer resetting the
+  /// connection can complete the sink's `done` with an error out of band. Await
+  /// it alongside your writes, or rely on [close], which now awaits it too.
+  Future<void> get done => _out.done;
 
   /// Appends a frame of palette indices, one byte per pixel.
   ///
@@ -531,6 +560,11 @@ class GifWriter implements StreamConsumer<GifFrame> {
     _out.flush();
     await _onFlush?.call();
     await _out.close();
+    // Surface a sink error that was reported through `done` rather than through
+    // `close`. `close` above has already closed the sink, so `done` is resolved
+    // by now — awaiting it here just propagates its error out of `close`, so a
+    // caller who only awaits `close` still sees a failure that arrived mid-stream.
+    await _out.done;
   }
 
   /// Consumes a stream of frames, so `frames.pipe(writer)` works.

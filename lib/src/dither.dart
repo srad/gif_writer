@@ -110,6 +110,30 @@ class GifDither {
     _DitherKind.floydSteinberg => 'GifDither.floydSteinberg',
     _DitherKind.atkinson => 'GifDither.atkinson',
   };
+
+  /// Value equality over the descriptor's fields.
+  ///
+  /// The kind is essential, not redundant: [none], [floydSteinberg] and
+  /// [atkinson] all carry a null matrix and a zero side, and differ *only* by it.
+  @override
+  bool operator ==(Object other) =>
+      other is GifDither &&
+      other._kind == _kind &&
+      other._side == _side &&
+      _sameMatrix(other._matrix, _matrix);
+
+  @override
+  int get hashCode =>
+      Object.hash(_kind, _side, Object.hashAll(_matrix ?? const <int>[]));
+
+  static bool _sameMatrix(List<int>? a, List<int>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null || a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }
 
 enum _DitherKind { none, ordered, floydSteinberg, atkinson }

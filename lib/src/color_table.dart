@@ -142,6 +142,24 @@ class GifColorTable {
     return bits;
   }
 
+  /// Value equality over the colours the table holds: two tables are equal when
+  /// they have the same entries in the same order. This is the type a caller
+  /// would naturally compare or key a cache on.
+  ///
+  /// Padding does not enter into it — [_rgb] holds the unpadded entries, so
+  /// [length] and those bytes describe the table completely.
+  @override
+  bool operator ==(Object other) {
+    if (other is! GifColorTable || other.length != length) return false;
+    for (var i = 0; i < _rgb.length; i++) {
+      if (other._rgb[i] != _rgb[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(length, Object.hashAll(_rgb));
+
   @override
   String toString() => 'GifColorTable($length colours)';
 }

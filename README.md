@@ -185,6 +185,11 @@ final gif = GifWriter(
   colors: colors,
   onFlush: () => socket.flush(),
 );
+
+// A socket can fail out of band — the peer resets and the failure arrives
+// through the sink's `done`, not the `add` that provoked it. Await `gif.done`
+// alongside your writes to see it; `gif.close()` awaits it for you at the end.
+await gif.done;
 ```
 </details>
 
@@ -317,7 +322,8 @@ are the original JIT experiments against variants no longer in the code, so a gr
 | `GifDither.blueNoise` / `.bayer4` / `.bayer8` / `.floydSteinberg` / `.atkinson` / `.none` | How in-between colours are resolved. |
 | `GifFrame.rgb(…)` / `.rgba(…, background:)` | The same three shapes, for the stream form. |
 | `addStream(stream)` / `pipe` | Consume a `Stream<GifFrame>`. |
-| `close()` | Writes the trailer and closes the sink. |
+| `close()` | Writes the trailer and closes the sink; also surfaces an error the sink reported through `done`. |
+| `done` | Completes when the sink is done — how an out-of-band sink error (a dropped socket) reaches a streaming caller. |
 | `GifColorTable.packed([0xRRGGBB, …])` | Up to 256 colours. |
 | `GifColorTable.rgb([r, g, b, …])` | The same, as raw bytes. |
 | `GifRepeat.forever` / `.once` / `.times(n)` | Looping. |

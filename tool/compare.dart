@@ -21,19 +21,15 @@ import 'package:image/image.dart' as img;
 
 import 'sample_image.dart';
 
-/// Counts what an encoder hands over, and the largest single handover.
+/// Counts what an encoder hands over: total bytes and how many writes it took.
 final class CountingSink implements StreamSink<List<int>> {
   int bytes = 0;
   int adds = 0;
-  int peakHeld = 0;
 
   @override
   void add(List<int> data) {
     bytes += data.length;
     adds++;
-    // What the encoder handed over in one go. For a streaming encoder this is
-    // the staging buffer; for a buffering one it is the finished file.
-    if (data.length > peakHeld) peakHeld = data.length;
   }
 
   @override
@@ -52,6 +48,18 @@ typedef Run = ({double ms, int bytes, int peak, int adds});
 const int size = 256;
 const int frames = 60;
 const int trials = 9;
+
+// gif_writer's fixed memory overhead, reported as `held` below. It is the
+// staging buffer plus the LZW string table, held for the whole animation rather
+// than per frame — so it is a constant, flat at any length. That flatness is the
+// property this comparison exists to show, and it is why the old measure (the
+// largest single sink write, which is the staging buffer alone) understated it.
+const int bufferSize = 64 * 1024;
+// Two `Int32List(_hashSize)` in `lib/src/lzw.dart`, where `_hashSize` is 32768:
+// `2 * 32768 * 4` = 256 kB. Coupled to that private constant the way
+// `tool/charts.py` already is — there is no public accessor to import.
+const int lzwTableBytes = 2 * 32768 * 4;
+const int fixedOverhead = bufferSize + lzwTableBytes;
 
 Future<void> main() async {
   print('$frames frames of $size x $size, neither encoder quantising');
@@ -94,7 +102,15 @@ Future<void> compare({
   final table = GifColorTable.packed(packed);
   Future<Run> runOurs() async {
     final sink = CountingSink();
-    final gif = GifWriter(sink, width: size, height: size, colors: table);
+    // `bufferSize:` is passed explicitly rather than left to default, so the
+    // constant the report adds up is the one the writer actually runs with.
+    final gif = GifWriter(
+      sink,
+      width: size,
+      height: size,
+      colors: table,
+      bufferSize: bufferSize,
+    );
     final watch = Stopwatch()..start();
     for (var f = 0; f < frames; f++) {
       await gif.addIndexedFrame(frame);
@@ -104,7 +120,10 @@ Future<void> compare({
     return (
       ms: watch.elapsedMicroseconds / 1000,
       bytes: sink.bytes,
-      peak: sink.peakHeld,
+      // The true fixed overhead, not the largest single handover: the LZW table
+      // is held just as permanently as the staging buffer but never crosses the
+      // sink, so a peak-of-writes measure cannot see it. See `fixedOverhead`.
+      peak: fixedOverhead,
       adds: sink.adds,
     );
   }
@@ -226,6 +245,10 @@ Future<void> compare({
   final oursTime = spread(oursRuns);
   final theirsTime = spread(theirsRuns);
 
+  // The `held` column (`r.peak`) is deliberately two different measurements: for
+  // the streaming encoder it is the fixed overhead — a constant, whatever the
+  // length — and for the buffering one it is the finished file, which grows with
+  // every frame. That contrast is the whole point of the column.
   print('');
   for (final (name, r, t) in <(String, Run, (double, double, double))>[
     ('  gif_writer', oursRuns.first, oursTime),

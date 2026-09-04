@@ -1,3 +1,38 @@
+## 0.3.2
+
+An additive release: two small public-API conveniences and a measurement fix. **No behavioural change
+to encoding** — output bytes are identical to 0.3.1, and every existing call still compiles and runs
+unchanged.
+
+### Added
+
+- **`GifWriter.done`** completes when the underlying sink is done, surfacing an error the sink reports
+  out of band — a socket the peer reset, whose failure arrives after the `add` that provoked it has
+  already returned. `close()` now awaits it too, so a caller who only awaits `close()` still sees such
+  a failure. This is the piece the README's "write to a socket" recipe was missing; `toFile` was
+  already covered by the per-frame flush.
+- **Value equality on `GifColorTable`, `GifRepeat` and `GifDither`.** All three are value-like public
+  types a caller would naturally compare or key a cache on; they now have `==` / `hashCode` over their
+  contents — colours and length, play count, and kind, side and matrix respectively.
+
+### Fixed
+
+- **`tool/compare.dart` reported the wrong held-memory figure.** Its `CountingSink.peakHeld` measured
+  the largest single handover to the sink — the staging buffer alone, ~0.06 MB — and could not see the
+  256 kB LZW table held just as permanently. It now reports the encoder's true fixed overhead,
+  64 kB + 256 kB = 0.31 MB, flat at any length and matching the README. The dead `peakHeld` is gone.
+
+### Documented
+
+- The `GifWriter` class doc now states the concurrency guarantee it always had: concurrent `add*Frame`
+  calls are safe because every mutation of the shared buffers happens synchronously before the single
+  `await`, and a future `await` moved earlier would silently break it.
+
+### Notes
+
+- `GifColorTable.rgb` was reported as silently truncating out-of-range channels; it already validated
+  them (0–255) and rejects anything else, exactly as `GifColorTable.packed` does. No change was needed.
+
 ## 0.3.1
 
 A performance release. The LZW hash table is larger, and the benchmarks that justify it now run the
