@@ -66,6 +66,21 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [x] **`GifColorTable.rgb` confirmed already validating** each channel to 0–255 (the roadmap item was
       stale); no code change.
 
+### 0.4.0
+- [x] **Binary transparency and disposal methods.** `GifTransparency`, passed as `GifWriter`'s
+      `transparency:`, reserves one palette slot as the transparent index and marks every frame with the
+      transparent flag and a `GifDisposal` (default `restoreBackground`). A pixel whose alpha is below
+      `alphaThreshold` (default 128) becomes a hole rather than a colour — GIF has no partial alpha, so
+      this thresholds rather than blends. A supplied table must leave the slot free (≤255 colours, else
+      an `ArgumentError`); a derived one quantises to 255 **from the opaque pixels only**, so invisible
+      colours do not spend palette entries, with a full-buffer fallback for an all-transparent first
+      frame. `ColorMapper` gained a `mapCount` so no opaque pixel is ever mapped onto the reserved
+      index. `GifWriter.transparentIndex` exposes it for `addIndexedFrame` callers. New
+      `transparency.dart`; verified in `test/transparency_test.dart` against `package:image` on the VM
+      and under Chrome.
+- [x] **`addRgbaFrame`'s `background` is now optional** — and `GifFrame.rgba`'s — since alpha can punch
+      holes instead of compositing. Existing calls that pass `background:` are byte-for-byte unchanged.
+
 ### Not yet tagged
 - [ ] **`v0.2.1` has no git tag.** `0.2.1` is published on pub.dev and `main` is at the right commit,
       but the tag list stops at `v0.2.0`: `git tag v0.2.1 <commit> && git push origin v0.2.1`.
@@ -104,9 +119,7 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 
 ## Features
 
-### 0.4.0
-- [ ] Transparency and disposal methods. `addRgbaFrame`'s required `background` exists only because
-      transparency is not implemented; it becomes optional once it is.
+### 0.5.0 (next)
 - [ ] Frame diffing, using the image descriptor's left/top and a local colour table. The ordered
       dithers were chosen partly to make this possible — static regions stay byte-identical frame to
       frame, which error diffusion would destroy.

@@ -14,21 +14,22 @@ class GifFrame {
   const GifFrame({required Uint8List indices, this.delay = Duration.zero})
     : pixels = indices,
       kind = GifFrameKind.indexed,
-      background = 0;
+      background = null;
 
   /// Three bytes per pixel, mapped to the writer's colour table with its dither.
   const GifFrame.rgb(this.pixels, {this.delay = Duration.zero})
     : kind = GifFrameKind.rgb,
-      background = 0;
+      background = null;
 
-  /// Four bytes per pixel, composited over [background] and then mapped.
+  /// Four bytes per pixel, resolved to opaque colour and then mapped.
   ///
-  /// [background] is **required**: GIF transparency is not implemented yet, and
-  /// silently dropping alpha would give a wrong colour for every semi-transparent
-  /// pixel rather than an obvious error.
+  /// [background] is **optional**, and mirrors `GifWriter.addRgbaFrame`: supply
+  /// it to composite semi-transparent pixels onto a surface, or leave it unset
+  /// when the writer has `transparency:` on and alpha should punch holes. Without
+  /// either, a semi-transparent pixel is drawn opaque.
   const GifFrame.rgba(
     this.pixels, {
-    required this.background,
+    this.background,
     this.delay = Duration.zero,
   }) : kind = GifFrameKind.rgba;
 
@@ -39,9 +40,10 @@ class GifFrame {
   /// Which of the three shapes [pixels] holds.
   final GifFrameKind kind;
 
-  /// The colour alpha is composited against, for [GifFrame.rgba]. Packed
-  /// `0xRRGGBB`.
-  final int background;
+  /// The colour a semi-transparent pixel is composited against, for
+  /// [GifFrame.rgba]. Packed `0xRRGGBB`, or null to leave alpha to the writer's
+  /// transparency. Null for the indexed and RGB constructors, which never use it.
+  final int? background;
 
   /// How long this frame is shown.
   ///

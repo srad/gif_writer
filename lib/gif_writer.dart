@@ -36,4 +36,5 @@ export 'src/color_table.dart' show GifColorTable;
 export 'src/dither.dart' show GifDither;
 export 'src/frame.dart' show GifFrame, GifFrameKind;
 export 'src/quantizer.dart' show GifQuantizer;
+export 'src/transparency.dart' show GifDisposal, GifTransparency;
 export 'src/writer.dart' show GifRepeat, GifWriter;

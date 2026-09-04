@@ -31,8 +31,14 @@ const int _flagHasPaletteColour = 2;
 /// arrive**, and this cache will then have to be invalidated alongside the LZW
 /// table.
 class ColorMapper {
-  ColorMapper(GifColorTable colors)
-    : _count = colors.length,
+  /// [mapCount], when given, restricts mapping to the table's first [mapCount]
+  /// entries: candidates and nearest-colour searches never return an index at or
+  /// above it. Transparency uses this to reserve the final slot — a query can
+  /// never be mapped onto the transparent index, so an opaque pixel whose colour
+  /// happens to equal the reserved slot's still lands on a real entry. Defaults
+  /// to the whole table.
+  ColorMapper(GifColorTable colors, {int? mapCount})
+    : _count = mapCount ?? colors.length,
       _r = Uint8List(colors.length),
       _g = Uint8List(colors.length),
       _b = Uint8List(colors.length),

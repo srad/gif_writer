@@ -1,3 +1,36 @@
+## 0.4.0
+
+Binary transparency, the first 0.4.0 feature. **Additive and backward compatible** — every existing
+call compiles and encodes byte-for-byte as before; nothing changes unless you pass the new
+`transparency:`.
+
+### Added
+
+- **`GifTransparency`, passed as `GifWriter`'s `transparency:`, turns on GIF's binary transparency.**
+  GIF has no partial alpha: a pixel is fully opaque or fully absent. With transparency on, one palette
+  slot is reserved as the transparent index, and a pixel whose alpha is below `alphaThreshold` (default
+  128) becomes a hole rather than being composited. A supplied `colors:` must leave the slot free (at
+  most 255 entries, else an `ArgumentError`); a derived table is quantised to 255 colours, from the
+  **opaque pixels only** so invisible colours do not spend palette entries.
+- **`GifDisposal`** — `unspecified` / `doNotDispose` / `restoreBackground` (the default) /
+  `restorePrevious` — sets the disposal method written into every frame's Graphic Control Extension,
+  which decides what a hole reveals. `restoreBackground` shows the page behind the image.
+- **`GifWriter.transparentIndex`** exposes the reserved index (null when transparency is off, or before
+  a derived table exists), so an `addIndexedFrame` caller can place holes by hand.
+
+### Changed
+
+- **`addRgbaFrame`'s `background` is now optional**, as is `GifFrame.rgba`'s. With `transparency:` on,
+  alpha punches holes and no background is needed; a background, when given, only refines the colour of
+  a pixel that is actually drawn. Without transparency and without a background, a semi-transparent
+  pixel is written opaque. Existing calls that pass `background:` are unchanged.
+
+### Guarantees held
+
+- The streaming, flat-memory property is intact: the only new per-frame work is one pass over the alpha
+  channel, and the reserved-slot table is built once on the first frame. Everything still runs on the
+  VM and under Chrome.
+
 ## 0.3.2
 
 An additive release: two small public-API conveniences and a measurement fix. **No behavioural change

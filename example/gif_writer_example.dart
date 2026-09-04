@@ -130,4 +130,50 @@ Future<void> _quantisedExample() async {
   print(
     'wrote quantised.gif — 40 RGB frames onto a palette derived from the first',
   );
+
+  await _transparentExample();
+}
+
+/// The fourth way in: **RGBA with real transparency**.
+///
+/// Turn on [GifTransparency] and `background` becomes optional — alpha below the
+/// threshold punches a hole instead of compositing onto a colour. A disc of
+/// colour orbits a fully transparent field; open the file over a coloured page
+/// and the background shows through everywhere but the disc.
+Future<void> _transparentExample() async {
+  const size = 128;
+  const frames = 60;
+
+  final gif = GifWriter.toFile(
+    'transparent.gif',
+    width: size,
+    height: size,
+    // No colours supplied — the palette is derived from the disc's opaque
+    // pixels, with one slot held back for the transparent index.
+    transparency: GifTransparency(),
+  );
+
+  final rgba = Uint8List(size * size * 4);
+  for (var f = 0; f < frames; f++) {
+    final phase = f * 2 * pi / frames;
+    final cx = size / 2 + cos(phase) * size / 4;
+    final cy = size / 2 + sin(phase) * size / 4;
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        final p = (y * size + x) * 4;
+        final inside = (x - cx) * (x - cx) + (y - cy) * (y - cy) < 24 * 24;
+        rgba[p] = (x * 255 ~/ size);
+        rgba[p + 1] = (y * 255 ~/ size);
+        rgba[p + 2] = 0xC0;
+        // Opaque inside the disc, a hole everywhere else.
+        rgba[p + 3] = inside ? 255 : 0;
+      }
+    }
+    await gif.addRgbaFrame(rgba, delay: const Duration(milliseconds: 40));
+  }
+
+  await gif.close();
+  print(
+    'wrote transparent.gif — $frames frames, a disc over a transparent field',
+  );
 }

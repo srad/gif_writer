@@ -204,6 +204,37 @@ GifWriter.toFile(..., repeat: GifRepeat.times(3));  // play three times
 </details>
 
 <details>
+<summary><strong>Transparency</strong></summary>
+
+GIF transparency is **binary** — a pixel is fully opaque or fully absent; the format has no partial
+alpha. Turn it on with `transparency:` and one palette slot is reserved as the transparent index. Then
+`addRgbaFrame`'s `background` becomes optional: alpha below the threshold punches a hole instead of
+compositing onto a colour.
+
+```dart
+final gif = GifWriter.toFile(
+  'out.gif',
+  width: w,
+  height: h,
+  // No colours supplied — the palette is derived from the opaque pixels, with
+  // one slot held back. Supply `colors:` instead and it must leave a slot free
+  // (at most 255 entries).
+  transparency: GifTransparency(
+    alphaThreshold: 128,                       // alpha < 128 is a hole
+    disposal: GifDisposal.restoreBackground,   // a hole reveals the page
+  ),
+);
+
+await gif.addRgbaFrame(rgba);                  // no background needed
+await gif.close();
+```
+
+Because the format thresholds rather than blends, a `background` — when you do pass one — only refines
+the colour of a pixel that is actually drawn. An `addIndexedFrame` caller can place holes by hand using
+`gif.transparentIndex`.
+</details>
+
+<details>
 <summary><strong>Trim the memory further</strong></summary>
 
 ```dart
@@ -318,7 +349,8 @@ are the original JIT experiments against variants no longer in the code, so a gr
 | `GifWriter.toFile(path, …)` | Convenience for `dart:io`, with back-pressure wired to `IOSink.flush`. |
 | `addIndexedFrame(indices, delay:)` | One byte per pixel. Validated, then compressed straight out. |
 | `addRgbFrame(rgb, delay:)` | Three bytes per pixel, mapped onto your table with the writer's dither. |
-| `addRgbaFrame(rgba, background:, delay:)` | Four bytes per pixel, composited over `background` first. |
+| `addRgbaFrame(rgba, background:, delay:)` | Four bytes per pixel. Composited over `background`, or, with `transparency:` on, alpha punches holes and `background` is optional. |
+| `GifTransparency(alphaThreshold:, disposal:)` | Turns on binary transparency; reserves a palette slot for the transparent index. |
 | `GifDither.blueNoise` / `.bayer4` / `.bayer8` / `.floydSteinberg` / `.atkinson` / `.none` | How in-between colours are resolved. |
 | `GifFrame.rgb(…)` / `.rgba(…, background:)` | The same three shapes, for the stream form. |
 | `addStream(stream)` / `pipe` | Consume a `Stream<GifFrame>`. |
@@ -403,8 +435,9 @@ express; this package writes what you ask for rather than pretending otherwise.
 ## Scope
 
 **Bring a colour table, or let it derive one.** Indexed frames are byte-exact; RGB frames are mapped
-onto the table you supplied, or onto one quantised from the first frame when you supply none. What is
-*not* here yet is transparency and frame diffing — see 0.4.0.
+onto the table you supplied, or onto one quantised from the first frame when you supply none.
+**Binary transparency** is here as of 0.4.0 (`transparency:`); what is *not* here yet is frame diffing
+and per-frame palettes — see 0.4.0.
 
 | version | |
 | --- | --- |
@@ -412,7 +445,8 @@ onto the table you supplied, or onto one quantised from the first frame when you
 | **0.2.0** ✅ | RGB and RGBA input, mapped to your table, with five dithers |
 | **0.2.1** ✅ | Loop-count and dictionary-test fixes; LZW resets without zeroing its table |
 | **0.3.0** ✅ | Global palette derivation — octree and Wu quantisers, `colors:` now optional |
-| 0.4.0 | Transparency, disposal methods, frame diffing, per-frame palettes |
+| **0.4.0** ✅ | Binary transparency and disposal methods (`transparency:`); `background` now optional |
+| 0.5.0 | Frame diffing, per-frame palettes |
 
 The full picture — open work, structural decisions, and what was ruled out and why — is in
 [ROADMAP.md](ROADMAP.md).

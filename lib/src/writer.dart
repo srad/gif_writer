@@ -12,6 +12,7 @@ import 'file_sink.dart' if (dart.library.io) 'file_sink_io.dart';
 import 'frame.dart';
 import 'lzw.dart';
 import 'quantizer.dart';
+import 'transparency.dart';
 
 /// How many times the animation repeats.
 class GifRepeat {
@@ -132,6 +133,14 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// palette, or want indexed frames (which cannot derive a table). [quantizer]
   /// chooses how that derivation is done and is ignored when [colors] is given —
   /// see [GifQuantizer].
+  ///
+  /// [transparency], when given, turns on GIF's binary transparency: one palette
+  /// slot is reserved as the transparent index, `background` on [addRgbaFrame]
+  /// becomes optional, and every frame is marked with the transparent flag and a
+  /// disposal method. A supplied [colors] must then hold at most 255 entries, to
+  /// leave the slot free; a derived table is quantised to 255. Left unset, none
+  /// of that happens and the writer behaves exactly as before. See
+  /// [GifTransparency].
   GifWriter(
     StreamSink<List<int>> sink, {
     required int width,
@@ -140,6 +149,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
     GifRepeat repeat = GifRepeat.forever,
     GifDither dither = GifDither.blueNoise,
     GifQuantizer quantizer = GifQuantizer.octree,
+    GifTransparency? transparency,
     Future<void> Function()? onFlush,
     int bufferSize = 64 * 1024,
   }) : _out = BufferedByteSink(sink, capacity: bufferSize),
@@ -149,7 +159,17 @@ class GifWriter implements StreamConsumer<GifFrame> {
        _repeat = repeat,
        _dither = dither,
        _quantizer = quantizer,
-       _onFlush = onFlush;
+       _transparency = transparency,
+       _onFlush = onFlush {
+    // A supplied table is reserved eagerly, so a full one is refused now rather
+    // than on the first frame, and so [transparentIndex] is known before any
+    // indexed frame that wants to place a hole itself. A derived table is
+    // reserved on the first frame instead, where the colours are known.
+    if (transparency != null && colors != null) {
+      _colors = _withTransparentSlot(colors);
+      _transparentIndex = _colors!.length - 1;
+    }
+  }
 
   /// Writes to a file at [path], truncating anything already there.
   ///
@@ -170,6 +190,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
     GifRepeat repeat = GifRepeat.forever,
     GifDither dither = GifDither.blueNoise,
     GifQuantizer quantizer = GifQuantizer.octree,
+    GifTransparency? transparency,
   }) {
     final sink = openFileSink(path);
     return GifWriter(
@@ -180,6 +201,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
       repeat: repeat,
       dither: dither,
       quantizer: quantizer,
+      transparency: transparency,
       onFlush: flusherFor(sink),
     );
   }
@@ -210,7 +232,25 @@ class GifWriter implements StreamConsumer<GifFrame> {
   final GifRepeat _repeat;
   final GifDither _dither;
   final GifQuantizer _quantizer;
+  final GifTransparency? _transparency;
   final Future<void> Function()? _onFlush;
+
+  /// The RGB stored in the reserved transparent slot. Never rendered — a decoder
+  /// draws nothing where the index appears — so its value is cosmetic; black
+  /// keeps the padded table honest.
+  static const int _transparentColor = 0x000000;
+
+  /// The reserved palette index, or -1 when transparency is off. Set eagerly for
+  /// a supplied table, on the first RGB/RGBA frame for a derived one.
+  int _transparentIndex = -1;
+
+  /// The palette index that decodes to a hole, or null when transparency is off
+  /// or a derived table has not been built yet.
+  ///
+  /// An [addIndexedFrame] caller places holes by writing this value into its
+  /// index buffer; the RGB paths do it from alpha automatically.
+  int? get transparentIndex =>
+      _transparentIndex >= 0 ? _transparentIndex : null;
 
   /// Built on the **first RGB frame**, never for an indexed-only animation.
   ///
@@ -332,7 +372,8 @@ class GifWriter implements StreamConsumer<GifFrame> {
     }
     // Derive the table from the first frame if none was supplied — before
     // mapping, which needs it, and before the header, which is written from it.
-    _colors ??= GifColorTable.quantize(rgb, quantizer: _quantizer);
+    // An RGB frame is fully opaque, so every pixel is a candidate colour.
+    _ensureColorsFromRgb(rgb);
     final indices = _map(rgb);
     // No range check: these indices came from our own mapper, which cannot
     // produce one outside the table. The check exists for bytes a caller
@@ -340,16 +381,26 @@ class GifWriter implements StreamConsumer<GifFrame> {
     await _writeIndexed(indices: indices, delay: delay, validate: false);
   }
 
-  /// Appends a frame of RGBA pixels, four bytes each, composited over
-  /// [background] and then mapped as [addRgbFrame] does.
+  /// Appends a frame of RGBA pixels, four bytes each, mapped as [addRgbFrame]
+  /// does after alpha is resolved.
   ///
-  /// [background] is **required rather than defaulted**. GIF transparency is not
-  /// implemented yet, so alpha has to go somewhere; picking white silently would
-  /// give a wrong colour for every semi-transparent pixel, and the caller is the
-  /// only one who knows what the image sits on.
+  /// [background] is **optional once `transparency:` was given** to the
+  /// constructor, and how alpha is handled depends on both:
+  ///
+  /// | | `background` given | `background` null |
+  /// |---|---|---|
+  /// | transparency off | composited over it | alpha ignored, RGB used as-is |
+  /// | transparency on | alpha below the threshold becomes a hole, else composited over it | alpha below the threshold becomes a hole, else RGB used as-is |
+  ///
+  /// GIF has no partial alpha, so this thresholds rather than blends: a
+  /// background, when supplied, only refines the colour of a pixel that is
+  /// *drawn*. **Without transparency and without a background there is nowhere
+  /// for alpha to go**, so a semi-transparent pixel is written at full opacity —
+  /// pass a `background`, or turn on `transparency:`, if that is not what you
+  /// want.
   Future<void> addRgbaFrame(
     Uint8List rgba, {
-    required int background,
+    int? background,
     Duration delay = Duration.zero,
   }) async {
     if (_closed) {
@@ -366,16 +417,39 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // Composite first, then derive from the *opaque* result — quantising the raw
     // RGBA would build a palette around colours the alpha never lets through.
     final rgb = _composite(rgba: rgba, background: background);
-    _colors ??= GifColorTable.quantize(rgb, quantizer: _quantizer);
-    await _writeIndexed(indices: _map(rgb), delay: delay, validate: false);
+    _ensureColorsFromRgb(rgb, rgba: rgba);
+    final indices = _map(rgb);
+    // Punch the holes last, over the mapped indices: a below-threshold pixel is
+    // the transparent slot regardless of what colour it composited to.
+    if (_transparency != null) {
+      final threshold = _transparency.alphaThreshold;
+      for (var i = 0, a = 3; a < rgba.length; i++, a += 4) {
+        if (rgba[a] < threshold) indices[i] = _transparentIndex;
+      }
+    }
+    await _writeIndexed(indices: indices, delay: delay, validate: false);
   }
 
-  /// Flattens RGBA onto an opaque background, in place in the scratch buffer.
-  Uint8List _composite({required Uint8List rgba, required int background}) {
+  /// Resolves RGBA to opaque RGB in the scratch buffer.
+  ///
+  /// With a [background], a semi-transparent pixel is flattened onto it; without
+  /// one, alpha is dropped and the pixel keeps its own colour. Either way the
+  /// holes themselves are punched afterwards, from alpha, in [addRgbaFrame].
+  Uint8List _composite({required Uint8List rgba, required int? background}) {
+    final rgb = _rgbScratch ??= Uint8List(_width * _height * 3);
+    if (background == null) {
+      // No surface to composite over: take the colour as given and let the alpha
+      // pass decide what disappears.
+      for (var i = 0, p = 0; p < rgb.length; i += 4, p += 3) {
+        rgb[p] = rgba[i];
+        rgb[p + 1] = rgba[i + 1];
+        rgb[p + 2] = rgba[i + 2];
+      }
+      return rgb;
+    }
     final br = (background >> 16) & 0xFF;
     final bg = (background >> 8) & 0xFF;
     final bb = background & 0xFF;
-    final rgb = _rgbScratch ??= Uint8List(_width * _height * 3);
     for (var i = 0, p = 0; p < rgb.length; i += 4, p += 3) {
       final a = rgba[i + 3];
       if (a == 255) {
@@ -393,8 +467,78 @@ class GifWriter implements StreamConsumer<GifFrame> {
     return rgb;
   }
 
+  /// Derives the global table from the first frame if none was supplied.
+  ///
+  /// [rgb] is the opaque, composited buffer. When transparency is on, only the
+  /// pixels that will actually be shown feed the quantiser — passing [rgba] lets
+  /// the alpha channel select them — and one slot is reserved for the hole. With
+  /// no transparency this is the plain 256-colour derivation.
+  void _ensureColorsFromRgb(Uint8List rgb, {Uint8List? rgba}) {
+    if (_colors != null) return;
+    if (_transparency == null) {
+      _colors = GifColorTable.quantize(rgb, quantizer: _quantizer);
+      return;
+    }
+    final source = rgba == null ? rgb : _opaquePixels(rgb: rgb, rgba: rgba);
+    final real = GifColorTable.quantize(
+      source,
+      maxColors: 255,
+      quantizer: _quantizer,
+    );
+    _colors = _withTransparentSlot(real);
+    _transparentIndex = _colors!.length - 1;
+  }
+
+  /// The RGB of the pixels at or above the alpha threshold, packed three bytes
+  /// each — the colours a transparent frame will actually show.
+  ///
+  /// A transient buffer, built once when the table is derived, like Wu's
+  /// histogram; it does not touch the flat held-memory figure. Falls back to the
+  /// whole frame when nothing is opaque, so an all-transparent first frame still
+  /// yields a valid table rather than an empty quantiser input.
+  Uint8List _opaquePixels({required Uint8List rgb, required Uint8List rgba}) {
+    final threshold = _transparency!.alphaThreshold;
+    var opaque = 0;
+    for (var a = 3; a < rgba.length; a += 4) {
+      if (rgba[a] >= threshold) opaque++;
+    }
+    if (opaque == 0) return rgb;
+    final out = Uint8List(opaque * 3);
+    for (var s = 0, a = 3, d = 0; a < rgba.length; s += 3, a += 4) {
+      if (rgba[a] >= threshold) {
+        out[d] = rgb[s];
+        out[d + 1] = rgb[s + 1];
+        out[d + 2] = rgb[s + 2];
+        d += 3;
+      }
+    }
+    return out;
+  }
+
+  /// Returns [realColors] with the reserved transparent slot appended, refusing
+  /// a table too full to hold it.
+  GifColorTable _withTransparentSlot(GifColorTable realColors) {
+    if (realColors.length > 255) {
+      throw ArgumentError.value(
+        realColors.length,
+        'colors',
+        'a transparent GIF needs a free palette slot; pass at most 255 colours',
+      );
+    }
+    return GifColorTable.packed(<int>[
+      for (var i = 0; i < realColors.length; i++) realColors[i],
+      _transparentColor,
+    ]);
+  }
+
   Uint8List _map(Uint8List rgb) {
-    final mapper = _mapper ??= ColorMapper(_colors!);
+    // The reserved slot is excluded from mapping, so no opaque pixel is ever
+    // mapped onto the transparent index — only the alpha pass places it.
+    final mapper =
+        _mapper ??= ColorMapper(
+          _colors!,
+          mapCount: _transparentIndex >= 0 ? _transparentIndex : null,
+        );
     final runner =
         _runner ??= DitherRunner(
           dither: _dither,
@@ -527,6 +671,13 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // this block is the same for every frame of every animation.
     _control[4] = centiseconds & 0xFF;
     _control[5] = (centiseconds >> 8) & 0xFF;
+    if (_transparency != null) {
+      // Packed field: disposal in bits 2-4, transparent-colour flag in bit 0.
+      // Both constant across frames, but written here rather than once so the
+      // one place that assembles this block holds the whole truth of it.
+      _control[3] = (_transparency.disposal.bits << 2) | 0x01;
+      _control[6] = _transparentIndex;
+    }
     _out.add(_control);
   }
 
