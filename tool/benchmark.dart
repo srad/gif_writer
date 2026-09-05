@@ -94,7 +94,7 @@ Future<void> main() async {
       '${'${rate(times[trials ~/ 2]).toStringAsFixed(1)} Mpx/s'.padLeft(14)}'
       '${'${rate(times.last).toStringAsFixed(1)} - '
           '${rate(times.first).toStringAsFixed(1)}'.padLeft(18)}'
-      '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MB'.padLeft(11)}'
+      '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MiB'.padLeft(11)}'
       '${adds.toString().padLeft(8)}',
     );
   }

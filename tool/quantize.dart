@@ -21,7 +21,7 @@ import 'sample_image.dart';
 /// entry (brute force, so the palette is judged and not the cube's approximation
 /// of it). Memory is stated, not timed: octree holds at most the palette — a few
 /// hundred small nodes, freed after the call — while Wu holds a fixed 33³ moment
-/// histogram of five `Float64List`s, about 1.4 MB, freed just the same. Neither
+/// histogram of five `Float64List`s, about 1.4 MiB, freed just the same. Neither
 /// survives into the streaming that follows.
 void main() {
   const side = 256;

@@ -67,32 +67,25 @@ class GifRepeat {
 
 /// Writes an animated GIF to a sink, one frame at a time.
 ///
-/// **Nothing is accumulated.** Each frame's compressed bytes go out through the
-/// sink as they are produced — at most one 255-byte LZW sub-block is held — so
-/// peak memory is a function of one frame, never of the animation's length. That
-/// is the whole reason this package exists: the alternatives build the finished
-/// file in memory and hand it over at the end, which a long recording on a phone
-/// cannot afford.
+/// **Await each frame to keep memory bounded.** Each frame's compressed bytes go
+/// out through a fixed staging buffer, so awaited streaming retains one frame
+/// rather than accumulating the animation. The destination must also drain its
+/// output; an output-collecting sink still retains the complete encoded file.
 ///
 /// The header is written on the **first frame**, not at construction — which is
 /// what lets the writer derive a colour table from that frame when none is given.
 ///
-/// **Concurrent `add*Frame` calls are safe**, and emit their frames in call
-/// order. Every mutation of the writer's shared state — `_scratch`, the LZW
-/// encoder, the staging buffer, the header/frame counters — happens
-/// *synchronously*, before the single `await _onFlush?.call()` at the end of
-/// `_writeIndexed`. So a call runs its whole encode-and-flush uninterrupted; by
-/// the time it suspends at that await, the frame's bytes are already out and the
-/// shared buffers are free for the next call to reuse. **This invariant is
-/// load-bearing and fragile: moving any `await` earlier in the write path —
-/// ahead of the encode — would let a second call clobber `_scratch` or the LZW
-/// dictionary mid-frame, with no error to show for it.**
+/// **Concurrent `add*Frame` calls are queued in call order**, including the
+/// awaited sink flush. Input buffers are borrowed: keep them unchanged until
+/// their returned futures complete. A backlog retains those buffers; awaiting
+/// each frame or using [addStream] keeps memory independent of animation length.
 ///
 /// Three ways in: [addIndexedFrame] takes one byte per pixel and is byte-exact,
 /// while [addRgbFrame] and [addRgbaFrame] map and dither. All three go onto the
 /// colour table — either the one passed as `colors:`, or, if that is left unset,
 /// the one derived from the first RGB or RGBA frame by the writer's [GifQuantizer].
-/// An indexed frame cannot derive a table, so it requires `colors:`.
+/// An indexed frame requires `colors:` or a table derived by an earlier RGB/RGBA
+/// frame; indices alone cannot derive a palette.
 ///
 /// ```dart
 /// final gif = GifWriter(
@@ -102,9 +95,12 @@ class GifRepeat {
 ///   colors: GifColorTable.packed(<int>[0x000000, 0xFF5500, 0xFFFFFF]),
 ///   dither: GifDither.blueNoise, // the default; only the RGB paths use it
 /// );
-/// await gif.addIndexedFrame(indices, delay: const Duration(milliseconds: 50));
-/// await gif.addRgbFrame(rgb, delay: const Duration(milliseconds: 50));
-/// await gif.close();
+/// try {
+///   await gif.addIndexedFrame(indices, delay: const Duration(milliseconds: 50));
+///   await gif.addRgbFrame(rgb, delay: const Duration(milliseconds: 50));
+/// } finally {
+///   await gif.close();
+/// }
 /// ```
 class GifWriter implements StreamConsumer<GifFrame> {
   /// Writes to [sink], which is closed by [close].
@@ -114,10 +110,13 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// against a slow disk — would queue frames inside the sink, moving the
   /// buffering this package removes one layer down where nobody looks for it.
   /// `GifWriter.toFile` wires it to `IOSink.flush`.
+  /// The callback must only drain the sink; awaiting another write or [close]
+  /// on this writer from inside it would wait on the operation running it.
   ///
   /// [bufferSize] is the staging buffer the encoder gathers small writes into
-  /// before handing them on. It is the package's entire fixed overhead besides
-  /// the LZW tables, and it does not grow: measured, batching here took a 5.8 MB
+  /// before handing them on. The indexed path also retains its LZW tables and
+  /// small runtime objects; RGB/RGBA paths allocate additional mapping and scratch
+  /// storage. The staging buffer does not grow: batching took a 5.8 MiB
   /// animation from 24,365 sink writes to 121, and lifted throughput by about
   /// half.
   /// Lower it on a memory budget; below about a kilobyte the syscalls start to
@@ -169,6 +168,10 @@ class GifWriter implements StreamConsumer<GifFrame> {
       _colors = _withTransparentSlot(colors);
       _transparentIndex = _colors!.length - 1;
     }
+    _sinkDone = _out.done;
+    // Observe once, before an asynchronous error can go unhandled. A listener
+    // per frame on a long-lived `done` future would retain the entire history.
+    unawaited(_sinkDone.then<void>((_) {}, onError: _recordFailure));
   }
 
   /// Writes to a file at [path], truncating anything already there.
@@ -192,6 +195,11 @@ class GifWriter implements StreamConsumer<GifFrame> {
     GifQuantizer quantizer = GifQuantizer.octree,
     GifTransparency? transparency,
   }) {
+    _checkDimension(width, 'width');
+    _checkDimension(height, 'height');
+    if (transparency != null && colors != null) {
+      _checkTransparentPalette(colors);
+    }
     final sink = openFileSink(path);
     return GifWriter(
       sink,
@@ -289,7 +297,12 @@ class GifWriter implements StreamConsumer<GifFrame> {
   bool get _everyByteValid => _colors!.length == 256;
 
   bool _headerWritten = false;
-  bool _closed = false;
+  bool _closing = false;
+  bool _addingStream = false;
+  Future<void> _tail = Future<void>.value();
+  Future<void>? _closeFuture;
+  late final Future<void> _sinkDone;
+  (Object, StackTrace)? _failure;
   int _frames = 0;
 
   /// How many frames have been written so far.
@@ -303,7 +316,46 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// this matters for the "write to a socket" case, where a peer resetting the
   /// connection can complete the sink's `done` with an error out of band. Await
   /// it alongside your writes, or rely on [close], which now awaits it too.
-  Future<void> get done => _out.done;
+  Future<void> get done => _sinkDone;
+
+  void _recordFailure(Object error, StackTrace stackTrace) {
+    _failure ??= (error, stackTrace);
+  }
+
+  void _throwIfFailed() {
+    final failure = _failure;
+    if (failure != null) Error.throwWithStackTrace(failure.$1, failure.$2);
+  }
+
+  Future<void> _enqueueFrame(GifFrame frame, {bool fromStream = false}) {
+    if (_closing || (_addingStream && !fromStream)) {
+      return Future<void>.error(StateError(
+        _closing ? 'the writer is closed' : 'the writer is consuming a stream',
+      ));
+    }
+    final result = _tail.then((_) => _executeFrame(frame));
+    // Keep the ordering chain usable after invalid input. Emission failures are
+    // latched separately, so later operations release their inputs without I/O.
+    _tail = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return result;
+  }
+
+  Future<void> _executeFrame(GifFrame frame) async {
+    _throwIfFailed();
+    switch (frame.kind) {
+      case GifFrameKind.indexed:
+        await _addIndexedFrameNow(frame.pixels, delay: frame.delay);
+      case GifFrameKind.rgb:
+        await _addRgbFrameNow(frame.pixels, delay: frame.delay);
+      case GifFrameKind.rgba:
+        await _addRgbaFrameNow(
+          frame.pixels,
+          background: frame.background,
+          delay: frame.delay,
+        );
+    }
+    _throwIfFailed();
+  }
 
   /// Appends a frame of palette indices, one byte per pixel.
   ///
@@ -311,18 +363,17 @@ class GifWriter implements StreamConsumer<GifFrame> {
   /// valid index into the colour table — this is checked, because an out-of-range
   /// index produces a file that decodes to the wrong colours rather than failing.
   ///
-  /// [delay] is rounded to hundredths of a second, which is all GIF stores.
-  /// **A delay under two hundredths is not honoured by most viewers**, which
-  /// substitute ten; the value is written as given rather than silently clamped,
-  /// so the file says what was asked for, but do not expect 60 fps to play as
-  /// 60 fps anywhere.
+  /// [delay] is rounded to hundredths of a second and clamped to GIF's 16-bit
+  /// field. Viewers may impose their own minimum playback delay.
   Future<void> addIndexedFrame(
     Uint8List indices, {
     Duration delay = Duration.zero,
+  }) => _enqueueFrame(GifFrame(indices: indices, delay: delay));
+
+  Future<void> _addIndexedFrameNow(
+    Uint8List indices, {
+    required Duration delay,
   }) async {
-    if (_closed) {
-      throw StateError('the writer is closed');
-    }
     if (_colors == null) {
       // Indices address a palette; they cannot conjure one. A writer left to
       // derive its table needs an RGB or RGBA frame to derive it from.
@@ -358,10 +409,12 @@ class GifWriter implements StreamConsumer<GifFrame> {
   Future<void> addRgbFrame(
     Uint8List rgb, {
     Duration delay = Duration.zero,
+  }) => _enqueueFrame(GifFrame.rgb(rgb, delay: delay));
+
+  Future<void> _addRgbFrameNow(
+    Uint8List rgb, {
+    required Duration delay,
   }) async {
-    if (_closed) {
-      throw StateError('the writer is closed');
-    }
     final expected = _width * _height * 3;
     if (rgb.length != expected) {
       throw ArgumentError.value(
@@ -402,10 +455,13 @@ class GifWriter implements StreamConsumer<GifFrame> {
     Uint8List rgba, {
     int? background,
     Duration delay = Duration.zero,
+  }) => _enqueueFrame(GifFrame.rgba(rgba, background: background, delay: delay));
+
+  Future<void> _addRgbaFrameNow(
+    Uint8List rgba, {
+    required int? background,
+    required Duration delay,
   }) async {
-    if (_closed) {
-      throw StateError('the writer is closed');
-    }
     final expected = _width * _height * 4;
     if (rgba.length != expected) {
       throw ArgumentError.value(
@@ -418,28 +474,19 @@ class GifWriter implements StreamConsumer<GifFrame> {
     // RGBA would build a palette around colours the alpha never lets through.
     final rgb = _composite(rgba: rgba, background: background);
     _ensureColorsFromRgb(rgb, rgba: rgba);
-    final indices = _map(rgb);
-    // Punch the holes last, over the mapped indices: a below-threshold pixel is
-    // the transparent slot regardless of what colour it composited to.
-    if (_transparency != null) {
-      final threshold = _transparency.alphaThreshold;
-      for (var i = 0, a = 3; a < rgba.length; i++, a += 4) {
-        if (rgba[a] < threshold) indices[i] = _transparentIndex;
-      }
-    }
+    final indices = _map(rgb, rgba: rgba);
     await _writeIndexed(indices: indices, delay: delay, validate: false);
   }
 
   /// Resolves RGBA to opaque RGB in the scratch buffer.
   ///
   /// With a [background], a semi-transparent pixel is flattened onto it; without
-  /// one, alpha is dropped and the pixel keeps its own colour. Either way the
-  /// holes themselves are punched afterwards, from alpha, in [addRgbaFrame].
+  /// one, the pixel keeps its own colour. With transparency enabled, the mapper
+  /// uses the original alpha channel to resolve holes during dithering.
   Uint8List _composite({required Uint8List rgba, required int? background}) {
     final rgb = _rgbScratch ??= Uint8List(_width * _height * 3);
     if (background == null) {
-      // No surface to composite over: take the colour as given and let the alpha
-      // pass decide what disappears.
+      // Keep the supplied colour; the mapper applies transparency when enabled.
       for (var i = 0, p = 0; p < rgb.length; i += 4, p += 3) {
         rgb[p] = rgba[i];
         rgb[p + 1] = rgba[i + 1];
@@ -502,7 +549,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
     for (var a = 3; a < rgba.length; a += 4) {
       if (rgba[a] >= threshold) opaque++;
     }
-    if (opaque == 0) return rgb;
+    if (opaque == 0 || opaque == rgba.length ~/ 4) return rgb;
     final out = Uint8List(opaque * 3);
     for (var s = 0, a = 3, d = 0; a < rgba.length; s += 3, a += 4) {
       if (rgba[a] >= threshold) {
@@ -515,9 +562,8 @@ class GifWriter implements StreamConsumer<GifFrame> {
     return out;
   }
 
-  /// Returns [realColors] with the reserved transparent slot appended, refusing
-  /// a table too full to hold it.
-  GifColorTable _withTransparentSlot(GifColorTable realColors) {
+  /// Refuses a palette with no room for the reserved transparent slot.
+  static void _checkTransparentPalette(GifColorTable realColors) {
     if (realColors.length > 255) {
       throw ArgumentError.value(
         realColors.length,
@@ -525,15 +571,20 @@ class GifWriter implements StreamConsumer<GifFrame> {
         'a transparent GIF needs a free palette slot; pass at most 255 colours',
       );
     }
+  }
+
+  /// Returns [realColors] with the reserved transparent slot appended.
+  GifColorTable _withTransparentSlot(GifColorTable realColors) {
+    _checkTransparentPalette(realColors);
     return GifColorTable.packed(<int>[
       for (var i = 0; i < realColors.length; i++) realColors[i],
       _transparentColor,
     ]);
   }
 
-  Uint8List _map(Uint8List rgb) {
+  Uint8List _map(Uint8List rgb, {Uint8List? rgba}) {
     // The reserved slot is excluded from mapping, so no opaque pixel is ever
-    // mapped onto the transparent index — only the alpha pass places it.
+    // mapped onto the transparent index — only alpha-aware mapping places it.
     final mapper =
         _mapper ??= ColorMapper(
           _colors!,
@@ -546,7 +597,13 @@ class GifWriter implements StreamConsumer<GifFrame> {
           width: _width,
         );
     final out = _scratch ??= Uint8List(_width * _height);
-    runner.mapRgb(rgb: rgb, out: out);
+    runner.mapRgb(
+      rgb: rgb,
+      out: out,
+      rgba: _transparency == null ? null : rgba,
+      alphaThreshold: _transparency?.alphaThreshold ?? 128,
+      transparentIndex: _transparentIndex,
+    );
     return out;
   }
 
@@ -586,26 +643,27 @@ class GifWriter implements StreamConsumer<GifFrame> {
       }
     }
 
-    if (!_headerWritten) {
-      _writeHeader();
-      _headerWritten = true;
+    try {
+      if (!_headerWritten) {
+        _writeHeader();
+        _headerWritten = true;
+      }
+      _writeGraphicControl(delay: delay);
+      _writeImageDescriptor();
+      _lzw.encode(
+        indices: indices,
+        minCodeSize: gifMinCodeSize(colorCount: _colors!.length),
+        out: _out,
+      );
+      _frames++;
+      // The queue owns the writer until the destination accepts this frame.
+      // Await once per frame, keeping sub-block writes batched.
+      _out.flush();
+      await _onFlush?.call();
+    } catch (error, stackTrace) {
+      _recordFailure(error, stackTrace);
+      _throwIfFailed();
     }
-
-    _writeGraphicControl(delay: delay);
-    _writeImageDescriptor();
-    _lzw.encode(
-      indices: indices,
-      minCodeSize: gifMinCodeSize(colorCount: _colors!.length),
-      out: _out,
-    );
-    _frames++;
-
-    // The frame's bytes leave here, before the next one is encoded: the staging
-    // buffer is bounded, but a frame must not sit in it waiting for the next.
-    _out.flush();
-    // Once per frame, not once per sub-block: flushing per block would trade the
-    // memory win for a syscall storm.
-    await _onFlush?.call();
   }
 
   void _writeHeader() {
@@ -660,9 +718,8 @@ class GifWriter implements StreamConsumer<GifFrame> {
   }
 
   void _writeGraphicControl({required Duration delay}) {
-    // Hundredths, rounded rather than truncated: at 15 ms truncation loses a
-    // fifth of the frame's time, and over a few hundred frames the animation
-    // visibly drifts against whatever it was timed to.
+    // GIF stores whole hundredths of a second. Round to the nearest value
+    // rather than systematically shortening fractional delays.
     final centiseconds = (delay.inMicroseconds / 10000).round().clamp(
       0,
       0xFFFF,
@@ -683,8 +740,8 @@ class GifWriter implements StreamConsumer<GifFrame> {
 
   void _writeImageDescriptor() {
     _descriptor[0] = 0x2C;
-    // left and top stay zero; the frame is the whole logical screen until 0.4.0
-    // adds diffing.
+    // Left and top stay zero; frame diffing is not implemented, so each frame
+    // occupies the whole logical screen.
     _descriptor[5] = _width & 0xFF;
     _descriptor[6] = (_width >> 8) & 0xFF;
     _descriptor[7] = _height & 0xFF;
@@ -696,44 +753,66 @@ class GifWriter implements StreamConsumer<GifFrame> {
 
   /// Writes the trailer and closes the sink.
   ///
+  /// Stops accepting new frames immediately and drains those already queued.
+  /// Repeated calls return the same future, including the same failure. Even
+  /// after an output failure, closing attempts to release the underlying sink.
+  ///
   /// A GIF with no frames is still written, header and all: a zero-frame file is
   /// a valid, empty animation, and throwing here would strand a caller whose
   /// stream happened to be empty.
   @override
-  Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    if (!_headerWritten) {
-      _writeHeader();
-      _headerWritten = true;
+  Future<void> close() {
+    final closing = _closeFuture;
+    if (closing != null) return closing;
+    if (_addingStream) {
+      return Future<void>.error(StateError('the writer is consuming a stream'));
     }
-    _out.addByte(0x3B);
-    _out.flush();
-    await _onFlush?.call();
-    await _out.close();
-    // Surface a sink error that was reported through `done` rather than through
-    // `close`. `close` above has already closed the sink, so `done` is resolved
-    // by now — awaiting it here just propagates its error out of `close`, so a
-    // caller who only awaits `close` still sees a failure that arrived mid-stream.
-    await _out.done;
+    _closing = true;
+    return _closeFuture = _finish();
+  }
+
+  Future<void> _finish() async {
+    await _tail;
+    try {
+      _throwIfFailed();
+      if (!_headerWritten) {
+        _writeHeader();
+        _headerWritten = true;
+      }
+      _out.addByte(0x3B);
+      _out.flush();
+      await _onFlush?.call();
+    } catch (error, stackTrace) {
+      _recordFailure(error, stackTrace);
+    }
+    try {
+      // Close without reflushing: a failed handover must never be retried.
+      await _out.close();
+      await _sinkDone;
+    } catch (error, stackTrace) {
+      _recordFailure(error, stackTrace);
+    }
+    _throwIfFailed();
   }
 
   /// Consumes a stream of frames, so `frames.pipe(writer)` works.
+  /// Await consumption before another stream, a direct frame write, or [close].
+  /// On a source error the caller remains responsible for closing the writer.
   @override
   Future<void> addStream(Stream<GifFrame> stream) async {
-    await for (final frame in stream) {
-      switch (frame.kind) {
-        case GifFrameKind.indexed:
-          await addIndexedFrame(frame.pixels, delay: frame.delay);
-        case GifFrameKind.rgb:
-          await addRgbFrame(frame.pixels, delay: frame.delay);
-        case GifFrameKind.rgba:
-          await addRgbaFrame(
-            frame.pixels,
-            background: frame.background,
-            delay: frame.delay,
-          );
+    if (_closing || _addingStream) {
+      throw StateError(
+        _closing ? 'the writer is closed' : 'the writer is consuming a stream',
+      );
+    }
+    _throwIfFailed();
+    _addingStream = true;
+    try {
+      await for (final frame in stream) {
+        await _enqueueFrame(frame, fromStream: true);
       }
+    } finally {
+      _addingStream = false;
     }
   }
 }

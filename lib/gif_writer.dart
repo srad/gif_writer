@@ -1,9 +1,9 @@
 /// A streaming GIF encoder.
 ///
-/// Frames are compressed and written to a sink as they arrive, so memory stays
-/// flat however long the animation runs. The usual approach — and the only other
-/// one available in Dart — builds the whole file in memory and hands it over at
-/// the end, which a long capture on a phone cannot afford.
+/// Awaited frames are compressed and written to a sink as they arrive, so memory
+/// stays bounded as the animation grows, provided the sink also drains its output.
+/// Input buffers must remain unchanged until their frame futures complete;
+/// overlapping writes are ordered but retain all waiting inputs.
 ///
 /// Bring a colour table, or let it derive one. Give it **palette indices** and
 /// the round trip is byte-exact; give it **RGB** and it is mapped onto a table —
@@ -18,13 +18,16 @@
 ///   colors: GifColorTable.packed(<int>[0x000000, 0xFF5500, 0xFFFFFF]),
 /// );
 ///
-/// // One byte per pixel: an index into the table above. Nothing approximates it.
-/// await gif.addIndexedFrame(indices, delay: const Duration(milliseconds: 50));
+/// try {
+///   // One byte per pixel: an index into the table above. Nothing approximates it.
+///   await gif.addIndexedFrame(indices, delay: const Duration(milliseconds: 50));
 ///
-/// // Or three bytes per pixel, mapped and dithered onto the same table.
-/// await gif.addRgbFrame(rgb, delay: const Duration(milliseconds: 50));
+///   // Or three bytes per pixel, mapped and dithered onto the same table.
+///   await gif.addRgbFrame(rgb, delay: const Duration(milliseconds: 50));
 ///
-/// await gif.close();
+/// } finally {
+///   await gif.close();
+/// }
 /// ```
 ///
 /// The dither defaults to [GifDither.blueNoise] rather than Floyd–Steinberg,

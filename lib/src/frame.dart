@@ -35,6 +35,7 @@ class GifFrame {
 
   /// The frame's bytes. What they mean depends on [kind] — palette indices, RGB
   /// triples, or RGBA quads.
+  /// Keep this buffer unchanged until the writer's frame future completes.
   final Uint8List pixels;
 
   /// Which of the three shapes [pixels] holds.
@@ -47,10 +48,8 @@ class GifFrame {
 
   /// How long this frame is shown.
   ///
-  /// GIF stores hundredths of a second, so anything finer is rounded. **Many
-  /// viewers also refuse delays below two hundredths**, silently substituting
-  /// ten — so a "60 fps" GIF is a fiction the format cannot express and the
-  /// browser will not honour. See `GifWriter.addIndexedFrame`.
+  /// GIF stores hundredths of a second, so anything finer is rounded. Viewers
+  /// may impose their own minimum playback delay. See `GifWriter.addIndexedFrame`.
   final Duration delay;
 
   /// The palette indices, for an [GifFrameKind.indexed] frame.

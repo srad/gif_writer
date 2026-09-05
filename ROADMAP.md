@@ -7,13 +7,15 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 
 ---
 
-## Shipped
+## Release history
+
+Measurements in older entries describe those releases, not the current build.
 
 ### 0.1.0
 - [x] Streaming container, LZW, indexed frames, any `StreamSink<List<int>>`
 
 ### 0.2.0
-- [x] RGB and RGBA input mapped onto a supplied table, with five dithers
+- [x] RGB and RGBA input mapped onto a supplied table, with five dithers plus `none`
 
 ### 0.2.1
 - [x] `GifRepeat.times(n)` above 65536 refused rather than truncated
@@ -60,9 +62,8 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
       single handover — the staging buffer alone, ~0.06 MB — and could not see the 256 kB LZW table
       held just as permanently. `runOurs` now reports 64 kB + 256 kB = 0.31 MB, flat at any length and
       matching the README; the dead `peakHeld` is gone.
-- [x] **Documented the concurrency guarantee** on the `GifWriter` class doc: concurrent `add*Frame` is
-      safe because every mutation of `_scratch`, `_lzw` and `_out` happens synchronously before the
-      single `await`, and moving any `await` earlier would silently break it.
+- [x] Documented the then-current synchronous buffer mutation behavior. That explanation did not
+      guarantee ordered sink flushes; 0.5.0 replaces it with an explicit queue through each flush.
 - [x] **`GifColorTable.rgb` confirmed already validating** each channel to 0–255 (the roadmap item was
       stale); no code change.
 
@@ -81,22 +82,32 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 - [x] **`addRgbaFrame`'s `background` is now optional** — and `GifFrame.rgba`'s — since alpha can punch
       holes instead of compositing. Existing calls that pass `background:` are byte-for-byte unchanged.
 
-### Not yet tagged
-- [ ] **`v0.2.1` has no git tag.** `0.2.1` is published on pub.dev and `main` is at the right commit,
-      but the tag list stops at `v0.2.0`: `git tag v0.2.1 <commit> && git push origin v0.2.1`.
+### 0.5.0
+
+- [x] Validate dimensions and transparent palette capacity before `toFile` opens a destination.
+- [x] Queue concurrent frame writes through the awaited flush, borrowing inputs until their futures
+      complete. Awaited frames and `addStream` retain bounded memory; concurrent backlogs retain inputs.
+- [x] Make `close()` drain accepted frames and share one completion, close the sink after failures,
+      and preserve the original error without retrying failed output. Observe sink `done` once.
+- [x] Enforce exclusive stream consumption and keep invalid frames recoverable.
+- [x] Emit the LZW end code at the decoder's final code width, with strict termination regressions.
+- [x] Resolve transparent indices during dithering so hidden RGB cannot diffuse into visible pixels.
+- [x] Reuse the RGB buffer when every pixel of the first transparent RGBA frame is opaque.
+- [x] Confirm the speed and retained-memory advantage against `image` 4.9.2; measurements and
+      validation scope are recorded in `doc/encoding-review.md`.
+- [x] Refresh the concise README, benchmark charts, publication contents, and failure-safe examples.
+- [x] Add a single-image conversion recipe with tests for pixel formats, alpha, orientation, and errors.
 
 ---
 
 ## Next — small, no API change
 
-- [ ] **CI.** There is none, and everything it would run is green today: `dart analyze`,
-      `dart format --set-exit-if-changed`, `dart test`, `dart test -p chrome`, and the example.
-      The README asserts "everything runs on the VM and under Chrome" with nothing enforcing it.
-      This is the highest-value open item: every guard in this package is only as good as something
-      running it.
-- [ ] Consider `lints: ^5.0.0` (needs Dart ^3.5.0, so it fits the 3.7 floor; `^6.0.0` needs ^3.8.0).
+- [ ] **CI.** Add automated analysis, VM and Chrome tests, and example smoke checks.
+      File-system tests run only on the VM; current release checks are performed locally.
+- [ ] Review lint upgrades compatible with the Dart 3.7 SDK floor. This release keeps the existing
+      dependency constraints.
 
-## Structural — changes public API shape, needs a decision
+## Structural — internal refactoring candidates
 
 - [ ] **Split `BufferedByteSink`.** Its documented job is "gathers small writes", but half its
       surface (`beginBlock`, `endBlock`, `rewindTo`, `blockIsFull`) is GIF's sub-block protocol and
@@ -119,25 +130,26 @@ State: `[x]` done · `[ ]` open · `[~]` decided against, with the reason.
 
 ## Features
 
-### 0.5.0 (next)
+### Future releases — not yet scheduled
 - [ ] Frame diffing, using the image descriptor's left/top and a local colour table. The ordered
       dithers were chosen partly to make this possible — static regions stay byte-identical frame to
-      frame, which error diffusion would destroy.
+      frame; error diffusion can change pixels outside the edited region.
 - [ ] Per-frame palettes, which the local colour tables above make possible. 0.3.0 derives one
       **global** palette from the first frame; a per-frame palette needs a local table per frame, and
-      when that lands `ColorMapper`'s cube and exact-colour table must be invalidated alongside the LZW
-      dictionary — nothing is cleared between frames today because the global palette is fixed for a
-      writer's lifetime.
+      when that lands `ColorMapper`'s cube and exact-colour table must be invalidated when the palette
+      changes. The mapper currently stays valid for the global palette's lifetime; the LZW dictionary
+      already resets for each frame.
 
 ---
 
 ## Decided against
 
-- [~] **Floyd–Steinberg as the default dither.** It boils, it defeats LZW, and it rules out frame
-      diffing. Measured in `tool/dither.dart`; see the `GifDither` docs.
-- [~] **A peak-RSS test for the streaming guarantee.** `ProcessInfo.currentRss` is GC-dependent and
-      would be flaky, and a flaky test guarding the one property that matters is worse than none.
-      The deterministic structural tests in `test/streaming_test.dart` prove the same thing.
+- [~] **Floyd–Steinberg as the default dither.** Error propagation can introduce temporal shimmer,
+      enlarge output, and reduce the unchanged regions available for frame diffing. Measured in
+      `tool/dither.dart`; see the `GifDither` docs.
+- [~] **A peak-RSS unit test for the streaming guarantee.** `ProcessInfo.currentRss` depends on GC
+      and process state. Structural tests cover frame handover and back-pressure; separate post-GC
+      VM-service measurements cover live retention. Neither is a measurement of peak RSS.
 - [~] **Interlacing.** The image descriptor's interlace flag (`_descriptor[9]`, bit 6) stays clear.
       Rarely wanted for a modern encoder and low value: it helps only a decoder rendering a partial
       download progressively, which nothing this package targets does. Flip the bit and reorder the

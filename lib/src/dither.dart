@@ -5,18 +5,11 @@ import 'color_mapper.dart';
 
 /// How a colour that falls between two palette entries is resolved.
 ///
-/// **Ordered dithering is the default, and that is a deliberate choice against
-/// the textbook one.** Floyd–Steinberg produces the best-looking *still* image,
-/// and it is the wrong tool for an animation:
-///
-/// - **It boils.** One pixel changing by one level alters the error propagated
-///   into every pixel after it, so regions that never moved decode differently
-///   from frame to frame and the result shimmers.
-/// - **It defeats LZW.** The noise it sprays is exactly what a dictionary
-///   compressor cannot fold, and this package's whole performance story is that
-///   dictionary.
-/// - **It rules out frame diffing**, because no region is ever byte-identical to
-///   the frame before it.
+/// **Ordered dithering is the default** because its position-based thresholds
+/// keep unchanged pixels stable across frames. Floyd–Steinberg can produce lower
+/// blurred error in a still image, but its propagated error can change pixels
+/// outside the edited region. That can cause temporal shimmer, larger output,
+/// and fewer unchanged regions available for future frame diffing.
 ///
 /// An ordered dither reads its threshold from a fixed matrix indexed by
 /// position, so the same colour at the same place always resolves the same way.
@@ -75,9 +68,8 @@ class GifDither {
 
   /// Floyd–Steinberg error diffusion, scanned serpentine.
   ///
-  /// **Best for a single frame, and animation-hostile** for the three reasons in
-  /// the class docs. Reach for it when the output is one image, or when quality
-  /// beats both file size and temporal stability.
+  /// Produces lower blurred error on the measured photographic workload.
+  /// Prefer it when that tradeoff outweighs file size and temporal stability.
   static const GifDither floydSteinberg = GifDither._(
     _DitherKind.floydSteinberg,
   );
@@ -182,20 +174,45 @@ class DitherRunner {
   Int16List _errorNext;
 
   /// Maps [rgb] — three bytes per pixel — into [out], one index per pixel.
-  void mapRgb({required Uint8List rgb, required Uint8List out}) {
+  void mapRgb({
+    required Uint8List rgb,
+    required Uint8List out,
+    Uint8List? rgba,
+    int alphaThreshold = 128,
+    int transparentIndex = 0,
+  }) {
     switch (_dither._kind) {
       case _DitherKind.none:
-        _mapNearest(rgb: rgb, out: out);
+        _mapNearest(
+          rgb: rgb, out: out, rgba: rgba,
+          alphaThreshold: alphaThreshold, transparentIndex: transparentIndex,
+        );
       case _DitherKind.ordered:
-        _mapOrdered(rgb: rgb, out: out);
+        _mapOrdered(
+          rgb: rgb, out: out, rgba: rgba,
+          alphaThreshold: alphaThreshold, transparentIndex: transparentIndex,
+        );
       case _DitherKind.floydSteinberg:
       case _DitherKind.atkinson:
-        _mapDiffused(rgb: rgb, out: out);
+        _mapDiffused(
+          rgb: rgb, out: out, rgba: rgba,
+          alphaThreshold: alphaThreshold, transparentIndex: transparentIndex,
+        );
     }
   }
 
-  void _mapNearest({required Uint8List rgb, required Uint8List out}) {
+  void _mapNearest({
+    required Uint8List rgb,
+    required Uint8List out,
+    required Uint8List? rgba,
+    required int alphaThreshold,
+    required int transparentIndex,
+  }) {
     for (var i = 0, p = 0; i < out.length; i++, p += 3) {
+      if (rgba != null && rgba[i * 4 + 3] < alphaThreshold) {
+        out[i] = transparentIndex;
+        continue;
+      }
       out[i] =
           _mapper.candidates(r: rgb[p], g: rgb[p + 1], b: rgb[p + 2]) & 0xFF;
     }
@@ -210,7 +227,13 @@ class DitherRunner {
   /// falls on the line between them, and compare that fraction with the
   /// threshold. One decision per pixel rather than three independent ones, and
   /// no tuning constant anywhere.
-  void _mapOrdered({required Uint8List rgb, required Uint8List out}) {
+  void _mapOrdered({
+    required Uint8List rgb,
+    required Uint8List out,
+    required Uint8List? rgba,
+    required int alphaThreshold,
+    required int transparentIndex,
+  }) {
     final matrix = _dither._matrix;
     final side = _dither._side;
     final mask = side - 1;
@@ -220,6 +243,10 @@ class DitherRunner {
     for (var y = 0, i = 0, p = 0; y < height; y++) {
       final row = (y & mask) * side;
       for (var x = 0; x < _width; x++, i++, p += 3) {
+        if (rgba != null && rgba[i * 4 + 3] < alphaThreshold) {
+          out[i] = transparentIndex;
+          continue;
+        }
         final r = rgb[p];
         final g = rgb[p + 1];
         final b = rgb[p + 2];
@@ -277,7 +304,13 @@ class DitherRunner {
   /// written**, never against the cube's cell centre — otherwise the cache's
   /// 5-bit approximation compounds across the whole frame instead of staying a
   /// per-pixel rounding.
-  void _mapDiffused({required Uint8List rgb, required Uint8List out}) {
+  void _mapDiffused({
+    required Uint8List rgb,
+    required Uint8List out,
+    required Uint8List? rgba,
+    required int alphaThreshold,
+    required int transparentIndex,
+  }) {
     final height = out.length ~/ _width;
     final atkinson = _dither._kind == _DitherKind.atkinson;
 
@@ -295,6 +328,14 @@ class DitherRunner {
         final x = leftToRight ? step : _width - 1 - step;
         final e = x * 3;
         final p = (y * _width + x) * 3;
+
+        if (rgba != null && rgba[(y * _width + x) * 4 + 3] < alphaThreshold) {
+          out[y * _width + x] = transparentIndex;
+          // A hole neither generates nor forwards quantization error. Normal
+          // kernel offsets still apply to the surrounding opaque pixels.
+          _error[e] = _error[e + 1] = _error[e + 2] = 0;
+          continue;
+        }
 
         final r = _clampByte(rgb[p] + _error[e]);
         final g = _clampByte(rgb[p + 1] + _error[e + 1]);

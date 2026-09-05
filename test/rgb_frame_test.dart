@@ -244,12 +244,12 @@ void main() {
       expect(() => gif.addIndexedFrame(Uint8List(16)), throwsStateError);
     });
 
-    test('closing a table-less writer with no frames still writes a file', () {
+    test('closing a table-less writer with no frames still writes a file', () async {
       // The zero-frame guarantee holds even when no palette was ever derived:
       // GIF89a permits a file with no global colour table.
       final sink = Collector();
       final gif = GifWriter(sink, width: 4, height: 4);
-      expect(gif.close(), completes);
+      await expectLater(gif.close(), completes);
       // A valid, if empty, GIF: the signature and a trailer at least.
       expect(sink.bytes.sublist(0, 6), <int>[71, 73, 70, 56, 57, 97]);
       expect(sink.bytes.last, 0x3B);

@@ -2,51 +2,41 @@
 
     python tool/charts.py
 
-The numbers below are transcribed from `dart run tool/compare.dart`, which is
-the authority — this only draws them. Anything changed here must be changed
-there first, or the picture and the table stop agreeing.
+Reads the recorded measurements in doc/benchmark-data.json. Throughput comes
+from the AOT comparison; retained memory comes from separate post-GC VM probes.
+See doc/encoding-review.md for methodology. No memory points are extrapolated.
 
 Two variants are written for each chart, light and dark, so the README can hand
 GitHub a `<picture>` and neither theme gets black text on a black background.
 """
+
+import json
+from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-OUT = "doc"
+OUT = Path(__file__).resolve().parent.parent / "doc"
+DATA = json.loads((OUT / "benchmark-data.json").read_text(encoding="utf-8"))
+ROWS = DATA["workloads"]
 
 # --- measured, median of nine interleaved trials -----------------------------
 # 60 frames of 256x256, both encoders given pre-palettised input.
-WORKLOADS = ["photo\n32 colours", "photo\n256 colours",
-             "noise\n32 colours", "noise\n256 colours"]
-OURS = [95.1, 58.8, 68.4, 52.1]
-OURS_LOW = [78.4, 51.9, 57.4, 41.7]
-OURS_HIGH = [100.0, 61.3, 71.0, 55.7]
-THEIRS = [48.3, 35.9, 28.2, 31.0]
-THEIRS_LOW = [45.0, 34.0, 26.1, 29.6]
-THEIRS_HIGH = [49.8, 37.0, 29.0, 32.6]
+WORKLOADS = [f"{r['workload']}\n{r['colors']} colours" for r in ROWS]
+OURS, OURS_LOW, OURS_HIGH = np.array([r["ours"] for r in ROWS]).T
+THEIRS, THEIRS_LOW, THEIRS_HIGH = np.array([r["image"] for r in ROWS]).T
 
-OURS_MB = [1.13, 3.34, 2.91, 5.15]
-THEIRS_MB = [1.21, 3.39, 3.04, 5.19]
+OURS_MIB = [r["ours_mib"] for r in ROWS]
+THEIRS_MIB = [r["image_mib"] for r in ROWS]
 
 # Percentages as `compare.dart` reports them, from the raw byte counts.
-# **Not derived from the MB above**, which are rounded to two places: doing that
+# **Not derived from the MiB above**, which are rounded to two places: doing that
 # printed -6.6% next to a table saying -6.4%, and a chart that disagrees with the
 # text beside it is worse than no chart.
-FASTER_PCT = [97, 64, 143, 68]
-SMALLER_PCT = [6.4, 1.3, 4.3, 0.8]
-
-# Held in memory. `package:image` returns the finished file, so what it holds is
-# the file; this holds a fixed staging buffer and LZW table whatever the length.
-#
-# **Not the 0.06 the sink reports.** `compare.dart` measures the largest single
-# handover, which is the 64 kB staging buffer alone — it cannot see the 256 kB
-# LZW string table, which is held just as permanently. Quoting the sink's number
-# put 0.06 here against the README's own "~320 kB" three sections down.
-MB_PER_FRAME = 5.19 / 60      # measured, noise at 256 colours
-OURS_HELD_MB = 0.31           # 64 kB staging + 256 kB LZW table
+FASTER_PCT = [r["faster_pct"] for r in ROWS]
+SMALLER_PCT = [r["smaller_pct"] for r in ROWS]
 
 BLUE = "#0175C2"
 GREY = "#9AA0A6"
@@ -96,8 +86,8 @@ def throughput(theme):
         ax.bar(x + offset, values, w, color=colour, label=label, zorder=3,
                yerr=err, capsize=3,
                error_kw=dict(ecolor=t["muted"], lw=1.1, zorder=4))
-        for xi, v in zip(x + offset, values):
-            ax.text(xi, v + 3.2, f"{v:.1f}", ha="center", va="bottom",
+        for xi, v, hi in zip(x + offset, values, high):
+            ax.text(xi, hi + 2.0, f"{v:.1f}", ha="center", va="bottom",
                     fontsize=9.5, color=t["fg"], zorder=5)
 
     # Below the tick labels, in axes fractions, so they cannot collide with them
@@ -113,8 +103,7 @@ def throughput(theme):
     ax.set_ylim(0, max(OURS) * 1.22)
     ax.set_title("Faster on every workload", loc="left",
                  fontsize=13, fontweight="bold", pad=26)
-    ax.text(0, 1.045, "60 frames of 256x256 - median of 9 interleaved trials on one machine; "
-            "ratios move a few points between runs",
+    ax.text(0, 1.045, "AOT · 60 × 256×256 · median and range of 9 trials",
             transform=ax.transAxes, fontsize=9.5, color=t["muted"])
     ax.legend(frameon=False, loc="upper right", fontsize=10)
     ax.grid(axis="y", lw=0.8, zorder=0)
@@ -126,16 +115,16 @@ def throughput(theme):
     # --- and the file it produced --------------------------------------------
     # Speed on its own proves nothing: an encoder can always go faster by
     # compressing worse. This is the check that it did not.
-    ax2.bar(x - w / 2, OURS_MB, w, color=BLUE, zorder=3)
-    ax2.bar(x + w / 2, THEIRS_MB, w, color=GREY, zorder=3)
+    ax2.bar(x - w / 2, OURS_MIB, w, color=BLUE, zorder=3)
+    ax2.bar(x + w / 2, THEIRS_MIB, w, color=GREY, zorder=3)
     for xi, pct in enumerate(SMALLER_PCT):
-        ax2.text(xi, max(OURS_MB[xi], THEIRS_MB[xi]) + 0.12, f"-{pct}%",
+        ax2.text(xi, max(OURS_MIB[xi], THEIRS_MIB[xi]) + 0.12, f"-{pct}%",
                  ha="center", fontsize=9.5, fontweight="bold", color=BLUE)
     ax2.set_xticks(x)
     ax2.set_xticklabels(["photo\n32", "photo\n256", "noise\n32", "noise\n256"],
                         fontsize=9.5)
-    ax2.set_ylabel("file written  (MB)")
-    ax2.set_ylim(0, max(THEIRS_MB) * 1.2)
+    ax2.set_ylabel("file written  (MiB)")
+    ax2.set_ylim(0, max(THEIRS_MIB) * 1.2)
     ax2.set_title("and smaller", loc="left", fontsize=13,
                   fontweight="bold", pad=26)
     ax2.text(0, 1.045, "lower is better", transform=ax2.transAxes,
@@ -147,56 +136,56 @@ def throughput(theme):
     ax2.tick_params(length=0)
 
     fig.tight_layout()
-    fig.subplots_adjust(bottom=0.24)  # room for the +% labels under the ticks
+    fig.subplots_adjust(bottom=0.27)  # room for percentages and provenance
+    fig.text(0.5, 0.02, "Windows x64 · Dart 3.13.2 · image 4.9.2 · September 2026",
+             ha="center", fontsize=9, color=t["muted"])
     fig.savefig(f"{OUT}/throughput-{theme}.png", dpi=200)
     plt.close(fig)
 
 
 def memory(theme):
-    """The claim the package is named for: held memory against length."""
+    """Show only measured retention at 60 and 1,000 frames, for every workload."""
     t = style(theme)
-    fig, ax = plt.subplots(figsize=(8, 4.2))
-
-    frames = np.arange(0, 1001)
-    ax.plot(frames, frames * MB_PER_FRAME, color=GREY, lw=2.4,
-            label="package:image", zorder=3)
-    ax.plot(frames, np.full_like(frames, OURS_HELD_MB, dtype=float),
-            color=BLUE, lw=2.4, label="gif_writer", zorder=4)
-
-    ax.annotate(f"{1000 * MB_PER_FRAME:.0f} MB",
-                xy=(1000, 1000 * MB_PER_FRAME), xytext=(-8, -2),
-                textcoords="offset points", ha="right", va="top",
-                fontsize=11, fontweight="bold", color=GREY)
-    ax.annotate(f"{OURS_HELD_MB:.2f} MB - flat", xy=(1000, OURS_HELD_MB),
-                xytext=(-8, 8),
-                textcoords="offset points", ha="right", va="bottom",
-                fontsize=11, fontweight="bold", color=BLUE)
-
-    ax.set_xlabel("frames written")
-    ax.set_ylabel("held in memory  (MB)")
-    ax.set_xlim(0, 1000)
-    ax.set_ylim(0, 1000 * MB_PER_FRAME * 1.12)
-    ax.set_title("Memory does not grow with the animation", loc="left",
-                 fontsize=13, fontweight="bold", pad=26)
-    ax.text(0, 1.045, "256x256 frames - one side scales with length, "
-            "the other does not",
-            transform=ax.transAxes, fontsize=9.5, color=t["muted"])
-    ax.legend(frameon=False, loc="upper left", fontsize=10,
-              bbox_to_anchor=(0.0, 0.92))
-    ax.grid(lw=0.8, zorder=0)
-    ax.set_axisbelow(True)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(length=0)
-
-    fig.tight_layout()
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True)
+    x = np.arange(len(WORKLOADS))
+    w = 0.38
+    for i, (ax, frames) in enumerate(zip(axes, DATA["memory_frames"])):
+        for offset, key, colour, label in [
+            (-w / 2, "ours_retained_bytes", BLUE, "gif_writer"),
+            (w / 2, "image_retained_bytes", GREY, "package:image"),
+        ]:
+            values = np.array([r[key][i] for r in ROWS]) / (1024 * 1024)
+            ax.bar(x + offset, values, w, color=colour, label=label, zorder=3)
+            for xi, value in zip(x + offset, values):
+                ax.text(xi, value * 1.12, f"{value:.2f}", ha="center",
+                        va="bottom", fontsize=9, color=t["fg"])
+        ax.set_yscale("log")
+        ax.set_ylim(0.1, 400)
+        ax.set_yticks([0.1, 1, 10, 100], ["0.1", "1", "10", "100"])
+        ax.set_xticks(x, WORKLOADS, fontsize=10)
+        ax.set_title(f"{frames:,} frames", loc="left", fontsize=12, pad=12)
+        ax.grid(axis="y", which="major", lw=0.8)
+        ax.set_axisbelow(True)
+        for side in ("top", "right", "left"):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(which="both", length=0)
+    axes[0].set_ylabel("retained memory (MiB, log scale)")
+    fig.suptitle("Awaited streaming stays near 0.32 MiB", x=0.07, ha="left",
+                 fontsize=14, fontweight="bold")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper right", bbox_to_anchor=(0.99, 1.0),
+               frameon=False, ncol=2, fontsize=10)
+    fig.text(0.5, 0.075, "JIT · live heap + external memory after GC · median of 3 trials · shared inputs excluded",
+             ha="center", fontsize=9, color=t["muted"])
+    fig.text(0.5, 0.025, "256×256 indexed frames · Windows x64 · Dart 3.13.2 · image 4.9.2 · September 2026",
+             ha="center", fontsize=9, color=t["muted"])
+    fig.tight_layout(rect=(0, 0.12, 1, 0.93))
     fig.savefig(f"{OUT}/memory-{theme}.png", dpi=200)
     plt.close(fig)
 
 
 if __name__ == "__main__":
-    import os
-    os.makedirs(OUT, exist_ok=True)
+    OUT.mkdir(exist_ok=True)
     for theme in THEMES:
         throughput(theme)
         memory(theme)

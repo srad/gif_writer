@@ -1,3 +1,39 @@
+## 0.5.0
+
+Correctness and lifecycle fixes, with refreshed documentation and examples. Public
+method signatures are unchanged; overlapping writes now execute through an ordered queue.
+
+### Fixed
+
+- Validate dimensions and transparent palette capacity before opening a destination file.
+- Serialize overlapping frame writes through their flushes. Inputs are borrowed until each
+  returned future completes; await each frame to keep queued memory bounded.
+- Drain accepted frames on close, share repeated close completion, preserve the original sink
+  failure, and attempt cleanup without retrying failed output. Observe sink `done` once.
+- Reject direct writes and close while `addStream` owns the writer. Invalid input remains
+  recoverable; sink failures are terminal.
+- Write the LZW end code at the correct width at dictionary boundaries.
+- Exclude transparent pixels from dithering error propagation, and avoid an extra RGB copy
+  when the first RGBA frame used for a transparent palette is fully opaque.
+
+### Documentation and examples
+
+- Add a file-to-GIF recipe using `image` for decoding, with no new encoder dependencies.
+- Refresh performance charts and distinguish measured live retention from fixed-buffer estimates.
+- Make examples close writers after failures; update roadmap, packaging, and API guidance.
+
+The indexed comparison remains 53–128% faster than `image` 4.9.2, with 0.8–6.4%
+smaller output. In that run, throughput was 3–10% below the previous build across
+the complete correctness change. See [release measurements](doc/encoding-review.md).
+
+**Compatibility:** encoding can change for affected LZW endings and transparent
+frames. Concurrent callers must retain input buffers unchanged until completion.
+Frame diffing and per-frame palettes are not included in 0.5.0.
+
+Older entries below record their original release behavior and measurements.
+The synchronous-concurrency explanation in 0.3.2 and old memory estimates are
+superseded by the queue and live-retention measurements in 0.5.0.
+
 ## 0.4.0
 
 Binary transparency, the first 0.4.0 feature. **Additive and backward compatible** — every existing
@@ -125,7 +161,7 @@ exactly as before; everything here is additive.
 - The palette is **global** — one table for the animation, derived from the first frame. Later frames
   map onto it, so a scene whose colours shift partway through is mapped onto the first frame's palette;
   quantise a representative image yourself and pass it as `colors:` when that is not what you want.
-  Per-frame palettes need local colour tables and wait for 0.4.0's frame diffing.
+  Per-frame palettes need local colour tables and remain future work as of 0.5.0.
 - Both quantisers are exercised on the VM and under Chrome; Wu's moment tables are `Float64List`
   precisely so its sums stay exact where `int` is a `double`.
 

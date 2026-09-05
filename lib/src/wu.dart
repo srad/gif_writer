@@ -5,15 +5,12 @@ import 'dart:typed_data';
 /// Derives a palette of at most [maxColors] entries from [rgb] — three bytes per
 /// pixel — and returns it as packed RGB bytes, ready for `GifColorTable.rgb`.
 ///
-/// **Why offer Wu.** It is the highest-fidelity of the fast, non-iterative
-/// quantisers in Celebi's 2023 survey: rather than averaging by population like
-/// an octree, it repeatedly splits the colour box of greatest weighted variance
-/// along the axis that leaves the least variance behind, so the palette follows
-/// the image's real structure. The cost is a fixed **~1.4 MB** moment histogram
-/// (five `Float64List`s over a 33³ grid) — but it is built once, for one global
-/// palette, and freed before a single frame streams, so it never touches the
-/// held-memory figure this package advertises. `octree.dart` is the default when
-/// that transient does not pay for itself.
+/// **Why offer Wu.** It repeatedly splits the colour box of greatest weighted
+/// variance along the axis that leaves the least variance behind. The five
+/// `Float64List` moment tables over a 33³ grid total about **1.37 MiB**. They become
+/// eligible for collection after palette generation; their transient allocation
+/// is additional to the encoder's retained buffers. `octree.dart` is the default
+/// for its smaller palette-generation memory budget.
 ///
 /// **Output is full 8-bit.** The 33³ grid bins colours to five bits, but every
 /// palette entry is a *weighted centroid* of real pixel values, not a bin

@@ -10,16 +10,11 @@ import 'wu.dart';
 ///
 /// **The choice is memory against fidelity, and the default guards memory.**
 ///
-/// - [octree] holds no more than the palette itself — a few hundred small nodes,
-///   reduced as the image streams in and freed the moment the table is built. It
-///   never spikes, which is why it is the default: this package's entire claim is
-///   a small, fixed overhead.
-/// - [wu] scores slightly better on fidelity (Celebi's 2023 survey ranks its
-///   variance-based splitting above octree's population averaging), at the cost
-///   of a ~1.4 MB moment histogram while the palette is built. That is transient
-///   — one global palette, then freed before a frame streams — so it does not
-///   change the held-memory figure, but it is a real allocation the default
-///   avoids.
+/// - [octree] bounds its tree by the palette size, reducing it as pixels arrive.
+///   Its nodes become eligible for collection after the palette is built.
+/// - [wu] uses variance-based splitting and allocates about 1.37 MiB for five
+///   moment tables. These are transient palette-generation allocations, not
+///   permanent encoder buffers. Visual quality depends on the input.
 ///
 /// `tool/quantize.dart` measures the two against each other rather than leaving
 /// the trade-off to assertion.
@@ -33,7 +28,7 @@ class GifQuantizer {
   /// **The default.** Octree quantisation, bounded to the palette's memory.
   static const GifQuantizer octree = GifQuantizer._(_QuantizerKind.octree);
 
-  /// Wu's greedy orthogonal bipartitioning: higher fidelity, a transient
+  /// Wu's greedy orthogonal bipartitioning: variance-based splitting, a transient
   /// histogram. See the class docs for the trade-off.
   static const GifQuantizer wu = GifQuantizer._(_QuantizerKind.wu);
 

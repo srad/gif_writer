@@ -6,7 +6,7 @@ import 'dart:typed_data';
 /// The encoder produces bytes in tiny pieces — a 255-byte LZW sub-block, an
 /// eight-byte control block — and passing each straight through cost one sink
 /// call and one allocation apiece: **24,365 of them** for a 5.8 MB animation,
-/// measured. Batching into a fixed staging buffer makes that a few dozen, and
+/// measured. Batching into a fixed staging buffer reduced that to 121, and
 /// costs one buffer that never grows.
 ///
 /// This does **not** weaken the streaming guarantee. The buffer is a fixed
@@ -115,8 +115,10 @@ final class BufferedByteSink {
     _length = 0;
   }
 
+  /// Closes the destination, discarding bytes left by a failed handover.
+  /// The writer owns flushing and must flush successful output before closing.
   Future<void> close() async {
-    flush();
+    _length = 0;
     await _sink.close();
   }
 

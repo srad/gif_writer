@@ -260,7 +260,7 @@ Future<void> main() async {
         '${blurred.toStringAsFixed(2).padLeft(12)}'
         '${structure.toStringAsFixed(0).padLeft(11)}'
         '${plain.toStringAsFixed(2).padLeft(11)}'
-        '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MB'.padLeft(11)}'
+        '${'${(bytes / 1024 / 1024).toStringAsFixed(2)} MiB'.padLeft(11)}'
         '${'${rate.toStringAsFixed(1)} Mpx/s'.padLeft(14)}',
       );
     }
@@ -321,7 +321,7 @@ Future<void> main() async {
     print(
       '${name.padRight(16)}'
       '${spectralPeak(original: flat, reconstructed: shown, side: side).toStringAsFixed(0).padLeft(11)}'
-      '${'${(sink.bytes / 1024).toStringAsFixed(1)} kB'.padLeft(11)}',
+      '${'${(sink.bytes / 1024).toStringAsFixed(1)} KiB'.padLeft(11)}',
     );
   }
 }

@@ -32,7 +32,8 @@ const int _maxCodes = 1 << _maxCodeWidth;
 /// *Large*, because the classic 5003 the original UNIX `compress` used puts the
 /// load factor at 0.82, where open addressing probes several times per pixel; at
 /// 32768 it is 0.125. The four powers of two around it were measured together,
-/// AOT and interleaved, on the three benchmark workloads:
+/// AOT and interleaved for the historical 0.3.1 sizing experiment below. These
+/// rates are not the current release benchmark; see doc/encoding-review.md.
 ///
 /// | slots | memory | noise | photo | gradient |
 /// | ---: | ---: | ---: | ---: | ---: |
@@ -55,7 +56,8 @@ const int _maxCodes = 1 << _maxCodeWidth;
 /// and once it is, 32768 wins outright. The only remaining cost of the larger
 /// table is its 256 kB of `Int32List`, paid once for the whole animation rather
 /// than per frame; the package's held memory rises from 0.19 MB to 0.31 MB with
-/// it, and stays flat at any length.
+/// it. These are buffer-size estimates; awaited streaming also retains small
+/// runtime objects, while queued calls retain their inputs.
 const int _hashSize = 32768;
 const int _hashMask = _hashSize - 1;
 
@@ -70,10 +72,8 @@ const int _maxEpoch = 1023;
 /// Compresses frames into GIF image-data sections.
 ///
 /// Reused across every frame of an animation, which is the point: the string
-/// table and the hash are allocated once and cleared
-/// between frames. Allocating them per frame — as a straightforward
-/// implementation does — costs 40 kB of garbage per frame and shows up as
-/// collection pauses in the middle of a capture.
+/// tables are allocated once. Dictionary entries are retired by generation
+/// between frames; storage is cleared only when the generation counter wraps.
 final class GifLzwEncoder {
   GifLzwEncoder()
     : _hashKeys = Int32List(_hashSize),
@@ -208,6 +208,11 @@ final class GifLzwEncoder {
         prefix = pixel;
       }
       _writeCode(prefix);
+      // The decoder adds its last dictionary entry after reading this prefix.
+      // It can therefore widen before EOI even though we insert no more keys.
+      if (_nextCode == (1 << _codeWidth) && _codeWidth < _maxCodeWidth) {
+        _codeWidth++;
+      }
     }
 
     _writeCode(_endCode);

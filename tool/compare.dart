@@ -1,5 +1,4 @@
-/// Measures this package against `package:image`, the only other GIF encoder
-/// for Dart, on identical input.
+/// Measures this package against `package:image` on identical indexed input.
 ///
 /// **Fairness matters more than a flattering number.** Both encoders are given
 /// frames that already carry a palette, so neither quantises — `image` would
@@ -43,30 +42,22 @@ final class CountingSink implements StreamSink<List<int>> {
 }
 
 /// One encoder's result for one workload.
-typedef Run = ({double ms, int bytes, int peak, int adds});
+typedef Run = ({double ms, int bytes, int adds});
 
 const int size = 256;
 const int frames = 60;
 const int trials = 9;
 
-// gif_writer's fixed memory overhead, reported as `held` below. It is the
-// staging buffer plus the LZW string table, held for the whole animation rather
-// than per frame — so it is a constant, flat at any length. That flatness is the
-// property this comparison exists to show, and it is why the old measure (the
-// largest single sink write, which is the staging buffer alone) understated it.
+// The streaming sink discards output; retained memory is measured separately.
+// See doc/encoding-review.md for the VM-service measurements.
 const int bufferSize = 64 * 1024;
-// Two `Int32List(_hashSize)` in `lib/src/lzw.dart`, where `_hashSize` is 32768:
-// `2 * 32768 * 4` = 256 kB. Coupled to that private constant the way
-// `tool/charts.py` already is — there is no public accessor to import.
-const int lzwTableBytes = 2 * 32768 * 4;
-const int fixedOverhead = bufferSize + lzwTableBytes;
 
 Future<void> main() async {
   print('$frames frames of $size x $size, neither encoder quantising');
   print('median of $trials interleaved trials, range alongside\n');
   print(
     '${'workload'.padRight(22)}${'rate (median)'.padLeft(16)}'
-    '${'range'.padLeft(20)}${'held'.padLeft(10)}'
+    '${'range'.padLeft(20)}'
     '${'writes'.padLeft(8)}${'output'.padLeft(11)}',
   );
 
@@ -102,8 +93,7 @@ Future<void> compare({
   final table = GifColorTable.packed(packed);
   Future<Run> runOurs() async {
     final sink = CountingSink();
-    // `bufferSize:` is passed explicitly rather than left to default, so the
-    // constant the report adds up is the one the writer actually runs with.
+    // Keep the staging buffer explicit for reproducible benchmark setup.
     final gif = GifWriter(
       sink,
       width: size,
@@ -120,10 +110,6 @@ Future<void> compare({
     return (
       ms: watch.elapsedMicroseconds / 1000,
       bytes: sink.bytes,
-      // The true fixed overhead, not the largest single handover: the LZW table
-      // is held just as permanently as the staging buffer but never crosses the
-      // sink, so a peak-of-writes measure cannot see it. See `fixedOverhead`.
-      peak: fixedOverhead,
       adds: sink.adds,
     );
   }
@@ -158,11 +144,9 @@ Future<void> compare({
     }
     final out = encoder.finish();
     watch.stop();
-    // Everything arrives in one piece at the end — that piece *is* the peak.
     return (
       ms: watch.elapsedMicroseconds / 1000,
       bytes: out?.length ?? 0,
-      peak: out?.length ?? 0,
       adds: 1,
     );
   }
@@ -240,15 +224,11 @@ Future<void> compare({
 
   final pixels = size * size * frames;
   double rate(double ms) => pixels / (ms * 1000);
-  String mb(int bytes) => '${(bytes / 1024 / 1024).toStringAsFixed(2)} MB';
+  String mb(int bytes) => '${(bytes / 1024 / 1024).toStringAsFixed(2)} MiB';
 
   final oursTime = spread(oursRuns);
   final theirsTime = spread(theirsRuns);
 
-  // The `held` column (`r.peak`) is deliberately two different measurements: for
-  // the streaming encoder it is the fixed overhead — a constant, whatever the
-  // length — and for the buffering one it is the finished file, which grows with
-  // every frame. That contrast is the whole point of the column.
   print('');
   for (final (name, r, t) in <(String, Run, (double, double, double))>[
     ('  gif_writer', oursRuns.first, oursTime),
@@ -260,7 +240,6 @@ Future<void> compare({
       '${'${rate(median).toStringAsFixed(1)} Mpx/s'.padLeft(16)}'
       '${'${rate(high).toStringAsFixed(1)} - '
           '${rate(low).toStringAsFixed(1)}'.padLeft(20)}'
-      '${mb(r.peak).padLeft(10)}'
       '${r.adds.toString().padLeft(8)}'
       '${mb(r.bytes).padLeft(11)}   ${name.trim()}',
     );

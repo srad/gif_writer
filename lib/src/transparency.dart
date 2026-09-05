@@ -13,9 +13,9 @@ enum GifDisposal {
   /// pixel shows whatever was already there.
   doNotDispose,
 
-  /// Clear the frame's area to the background before the next draws, so a
-  /// transparent pixel reveals the page behind the image. **The default**, and
-  /// what makes a hole an actual hole.
+  /// Clear the frame's area to the GIF background before the next frame draws.
+  /// **The default.** Viewers determine how that background is displayed when
+  /// transparency is enabled.
   restoreBackground,
 
   /// Restore whatever was under the frame before it drew. Rarely wanted and
@@ -44,7 +44,8 @@ enum GifDisposal {
 /// the transparent index (a supplied table must leave room; a derived one is
 /// quantised to 255 colours), makes `addRgbaFrame`'s `background` optional, and
 /// writes the transparent flag and [disposal] into every frame. Left unset,
-/// nothing changes and `background` stays required — the 0.1.x behaviour.
+/// alpha is composited when `background` is supplied; without a background,
+/// RGBA pixels are written opaque using their RGB channels.
 ///
 /// A plain value object with `==`/`hashCode`, matching `GifDither`, `GifRepeat`
 /// and `GifQuantizer`, so a caller can compare two or key a cache on one.

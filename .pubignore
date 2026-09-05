@@ -6,10 +6,10 @@
 # the rule. Anything that should be absent from the archive has to be listed
 # here even if git already ignores it.
 
-# The benchmark charts. The README points at them through absolute
-# raw.githubusercontent URLs, so pub.dev renders them without the archive
-# carrying 390 kB of PNG that nobody downloading the package will open.
-doc/
+# Charts are hosted at the release tag. Keep the small documentation and data
+# files in the archive, including the inputs used by tool/charts.py.
+doc/*.png
+doc/api/
 
 # Python bytecode, left behind by importing tool/blue_noise.py.
 __pycache__/

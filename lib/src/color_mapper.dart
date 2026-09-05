@@ -27,9 +27,9 @@ const int _flagHasPaletteColour = 2;
 ///
 /// Built once per writer and reused for the whole animation. Nothing here is
 /// cleared between frames: the answers depend only on the palette, which is
-/// fixed for a writer's lifetime. **That changes the day per-frame palettes
-/// arrive**, and this cache will then have to be invalidated alongside the LZW
-/// table.
+/// fixed for a writer's lifetime. Per-frame palettes would require invalidating
+/// this cache when the palette changes. The LZW dictionary already resets for
+/// every frame independently of the palette.
 class ColorMapper {
   /// [mapCount], when given, restricts mapping to the table's first [mapCount]
   /// entries: candidates and nearest-colour searches never return an index at or

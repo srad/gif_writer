@@ -9,10 +9,9 @@ import 'dart:typed_data';
 /// the tree never holds more than about [maxColors] live leaves, because it is
 /// reduced *as it is built* rather than grown to completion and pruned at the
 /// end. That is the property this package is built around — a fixed, small
-/// overhead — and it is why octree is the default. A survey of the field
-/// (Celebi, 2023) puts a variance method like Wu's slightly ahead on raw
-/// fidelity; `wu.dart` is the opt-in for that, and `tool/quantize.dart` measures
-/// the gap rather than asserting it.
+/// overhead — and it is why octree is the default. `wu.dart` offers variance-based
+/// splitting with larger transient tables; `tool/quantize.dart` compares quality
+/// on generated input.
 ///
 /// **Web-safe.** The per-channel sums reach at most `255 * pixelCount`, which for
 /// a 16-megapixel frame is about 4.3e9 — well inside the 53-bit integers a `double`
