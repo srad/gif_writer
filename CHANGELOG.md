@@ -1,3 +1,13 @@
+## 0.6.0
+
+Maintenance release with stronger regression coverage and updated development tooling.
+
+- Strengthen LZW epoch-recycling and exact sub-block tests; cover delay boundaries and the browser file API.
+- Update compatible lint versions while retaining Dart 3.7 support.
+- Exclude local build and agent artifacts from publication; refresh validation documentation.
+
+Public APIs, encoder behavior, and runtime dependencies are unchanged.
+
 ## 0.5.0
 
 Correctness and lifecycle fixes, with refreshed documentation and examples. Public

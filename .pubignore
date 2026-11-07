@@ -11,6 +11,9 @@
 doc/*.png
 doc/api/
 
+# Local builds, coverage reports, and SDK compatibility checks.
+/build/
+
 # Python bytecode, left behind by importing tool/blue_noise.py.
 __pycache__/
 *.py[cod]
@@ -26,6 +29,7 @@ __pycache__/
 .claude
 .codex
 .agents
+.serena/
 CLAUDE.md
 AGENTS.md
 .DS_Store

@@ -8,9 +8,11 @@ import 'round_trip_test.dart' show RecordingSink;
 // A strict decoder, independent of the encoder's hash and insertion code.
 // Reading the declared pixel count is insufficient: EOI must also fit entirely
 // inside the data sub-blocks, without borrowing bits from their terminator.
-({List<int> pixels, Map<int, int> boundaries, int clears}) decodePayload(
-  Uint8List payload, int minimum, int expected,
-) {
+({List<int> pixels, Map<int, int> boundaries, int clears}) decodePayload({
+  required Uint8List payload,
+  required int minimum,
+  required int expected,
+}) {
   var bit = 0;
   var width = minimum + 1;
   final clear = 1 << minimum;
@@ -64,7 +66,7 @@ import 'round_trip_test.dart' show RecordingSink;
   }
 }
 
-(Uint8List, int) imageData(Uint8List gif) {
+({Uint8List payload, int minimum, List<int> blockLengths}) imageData(Uint8List gif) {
   var offset = 13 + ((gif[10] & 0x80) == 0 ? 0 : 3 * (1 << ((gif[10] & 7) + 1)));
   while (gif[offset] == 0x21) {
     offset += 2;
@@ -77,16 +79,19 @@ import 'round_trip_test.dart' show RecordingSink;
   if (flags & 0x80 != 0) offset += 3 * (1 << ((flags & 7) + 1));
   final minimum = gif[offset++];
   final payload = BytesBuilder();
+  final blockLengths = <int>[];
   while (gif[offset] != 0) {
     final length = gif[offset++];
+    blockLengths.add(length);
     payload.add(gif.sublist(offset, offset + length));
     offset += length;
   }
   expect(gif[offset + 1], 0x3B);
-  return (payload.toBytes(), minimum);
+  expect(offset + 2, gif.length, reason: 'bytes after the GIF trailer');
+  return (payload: payload.toBytes(), minimum: minimum, blockLengths: blockLengths);
 }
 
-Future<Uint8List> encode(Uint8List pixels, int minimum) async {
+Future<Uint8List> encode({required Uint8List pixels, required int minimum}) async {
   final sink = RecordingSink();
   // A two-row image accommodates the long dictionary-reset fixture.
   final height = pixels.length > 65535 ? 2 : 1;
@@ -100,14 +105,17 @@ Future<Uint8List> encode(Uint8List pixels, int minimum) async {
 
 void main() {
   test('strict reader rejects the original truncated end code', () {
-    expect(() => decodePayload(Uint8List.fromList([12, 16, 35, 2, 60, 81]), 2, 12),
+    expect(() => decodePayload(
+      payload: Uint8List.fromList([12, 16, 35, 2, 60, 81]),
+      minimum: 2, expected: 12),
       throwsFormatException);
   });
 
   test('12-pixel fixture has a complete five-bit end code', () async {
     final pixels = Uint8List.fromList([1, 0, 0, 1, 3, 2, 2, 0, 2, 0, 3, 1]);
-    final (payload, minimum) = imageData(await encode(pixels, 2));
-    expect(decodePayload(payload, minimum, pixels.length).pixels, pixels);
+    final data = imageData(await encode(pixels: pixels, minimum: 2));
+    expect(decodePayload(payload: data.payload, minimum: data.minimum,
+      expected: pixels.length).pixels, pixels);
   });
 
   for (var minimum = 2; minimum <= 8; minimum++) {
@@ -118,8 +126,9 @@ void main() {
         state = (state * 1664525 + 1013904223) & 0xFFFFFFFF;
         pixels[i] = (state >> 16) & ((1 << minimum) - 1);
       }
-      final (payload, size) = imageData(await encode(pixels, minimum));
-      final decoded = decodePayload(payload, size, pixels.length);
+      final data = imageData(await encode(pixels: pixels, minimum: minimum));
+      final decoded = decodePayload(payload: data.payload, minimum: data.minimum,
+        expected: pixels.length);
       expect(decoded.pixels, pixels);
       expect(decoded.clears, greaterThan(1));
       expect(decoded.boundaries.keys.toSet(),
@@ -127,8 +136,9 @@ void main() {
       for (final boundary in decoded.boundaries.values) {
         for (final length in [boundary - 1, boundary, boundary + 1]) {
           final prefix = Uint8List.sublistView(pixels, 0, length);
-          final (data, bits) = imageData(await encode(prefix, minimum));
-          expect(decodePayload(data, bits, length).pixels, prefix,
+          final prefixData = imageData(await encode(pixels: prefix, minimum: minimum));
+          expect(decodePayload(payload: prefixData.payload,
+            minimum: prefixData.minimum, expected: length).pixels, prefix,
             reason: 'minimum=$minimum, length=$length');
         }
       }

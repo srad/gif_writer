@@ -27,6 +27,7 @@ __pycache__/
 .claude
 .codex
 .agents
+.serena/
 .agennts
 CLAUDE.md
 AGENTS.md

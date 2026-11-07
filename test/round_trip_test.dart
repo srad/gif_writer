@@ -208,31 +208,23 @@ void main() {
   });
 
   test('an animation long enough to recycle the LZW epoch counter', () async {
-    // The string table is retired by bumping a generation counter rather than
-    // being zeroed, and that counter has 1023 generations before it must
-    // actually clear and start over. **Nothing else here comes near that.** The
-    // largest case above is a single 200x200 frame, which resets the dictionary
-    // under a dozen times; the recycle branch would otherwise first run about
-    // sixty frames into somebody's recording, and if it were off by one the
-    // symptom is a file that decodes as noise deep into a long capture — the
-    // exact failure this package exists to prevent, and the worst kind to trace.
-    //
-    // Noise at 256 colours resets ~17 times a frame, so 70 frames crosses the
-    // recycle comfortably. Every frame is checked, not just the last: a stale
-    // generation corrupts the frame it happens in, not the end of the file.
-    const side = 64;
-    const frames = 70;
+    // These small frames cannot fill the dictionary: each starts exactly one
+    // generation. Frame 1023 therefore reuses generation 1. The zero frames
+    // leave the first pattern's hash entries intact, so replaying that pattern
+    // exposes stale codes if recycling forgets to clear the table. Arbitrary
+    // noise can overwrite those entries and miss the same bug.
+    const side = 8;
+    const frames = 1025;
     final colors = GifColorTable.packed(<int>[
       for (var i = 0; i < 256; i++) (i << 16) | (i << 8) | i,
     ]);
-    // Deterministic pseudo-noise, so a failure is reproducible.
-    var seed = 12345;
-    int next() => seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
+    final pattern = Uint8List.fromList([for (var i = 1; i <= 64; i++) i]);
+    final zeros = Uint8List(side * side);
     final sources = <Uint8List>[
-      for (var f = 0; f < frames; f++)
-        Uint8List.fromList(<int>[
-          for (var i = 0; i < side * side; i++) (next() >> 16) & 0xFF,
-        ]),
+      pattern,
+      for (var f = 0; f < 1022; f++) zeros,
+      pattern,
+      Uint8List.fromList([for (var i = 64; i >= 1; i--) i]),
     ];
 
     final animation = await roundTrip(

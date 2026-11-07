@@ -98,14 +98,22 @@ Measurements in older entries describe those releases, not the current build.
 - [x] Refresh the concise README, benchmark charts, publication contents, and failure-safe examples.
 - [x] Add a single-image conversion recipe with tests for pixel formats, alpha, orientation, and errors.
 
+### 0.6.0
+
+- [x] Review lint upgrades compatible with the Dart 3.7 SDK floor: allow lints 5.1.1 through 6.x,
+      verified with analysis and all VM/Chrome tests on Dart 3.7.0 and 3.13.7.
+- [x] Exclude local build and agent artifacts from publication, and build artifacts from analysis.
+- [x] Strengthen epoch recycling and exact sub-block regressions, and cover delay boundaries and
+      the browser file API. See [maintenance validation and measurements](doc/maintenance-review.md).
+- [x] Add reproducible dither timing and fixture reports; retain the original palette mapper after
+      the packed-cache experiment failed to establish a performance gain beyond observed variation.
+
 ---
 
 ## Next — small, no API change
 
 - [ ] **CI.** Add automated analysis, VM and Chrome tests, and example smoke checks.
       File-system tests run only on the VM; current release checks are performed locally.
-- [ ] Review lint upgrades compatible with the Dart 3.7 SDK floor. This release keeps the existing
-      dependency constraints.
 
 ## Structural — internal refactoring candidates
 
@@ -122,11 +130,11 @@ Measurements in older entries describe those releases, not the current build.
 
 ## Performance — measured, not assumed
 
-- [ ] **Packed palette in `ColorMapper`.** `_mapOrdered` takes six bounds-checked loads per pixel
-      (`redAt`/`greenAt`/`blueAt` twice); `_mapDiffused` takes three. A `Uint32List` of packed
-      colours — 1 kB against the 96 kB cube already there — makes those two and one. Affects the RGB
-      paths only. `tool/dither.dart` already reports a rate per dither, so it is directly measurable.
-      Note that reusing `colorAt` does **not** help: it does the same three loads internally.
+- [~] **Additional packed palette cache in `ColorMapper`.** Tested the two-load ordered and
+      one-load diffusion paths against the original mapper in nine paired AOT trials.
+      Neither default blue-noise case established a gain beyond observed variation, so the extra
+      cache was removed. The original channel arrays and mapping remain; revisit with new evidence.
+      See [the experiment and raw samples](doc/maintenance-review.md#packed-palette-experiment).
 
 ## Features
 

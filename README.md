@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://pub.dev/packages/gif_writer"><img src="https://img.shields.io/pub/v/gif_writer.svg?logo=dart&logoColor=white" alt="pub package"></a>
-  <a href="https://github.com/srad/gif_writer/blob/v0.5.0/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licence"></a>
+  <a href="https://github.com/srad/gif_writer/blob/v0.6.0/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licence"></a>
   <img src="https://img.shields.io/badge/SDK-%E2%89%A5%203.7-0175C2?logo=dart&logoColor=white" alt="Dart SDK 3.7+">
   <img src="https://img.shields.io/badge/dependencies-none-success" alt="no runtime dependencies">
 </p>
@@ -46,7 +46,7 @@ try {
 The first frame's palette is reused for the whole animation. To supply your own,
 pass `colors: GifColorTable.packed([0x000000, 0xFF5500, 0xFFFFFF])`.
 
-See the [runnable examples](https://github.com/srad/gif_writer/blob/v0.5.0/example/gif_writer_example.dart) for indexed frames,
+See the [runnable examples](https://github.com/srad/gif_writer/blob/v0.6.0/example/gif_writer_example.dart) for indexed frames,
 RGB, palette generation, and transparency.
 
 ## Save an image as GIF
@@ -94,7 +94,7 @@ Future<void> main() => saveAsGif('input.png', 'output.gif');
 
 The source is decoded in memory before writing. GIF palette conversion can change
 colours, and alpha below 128 becomes transparent. The encoder itself has no runtime
-dependencies. [Run this example](https://github.com/srad/gif_writer/blob/v0.5.0/example/save_image.dart).
+dependencies. [Run this example](https://github.com/srad/gif_writer/blob/v0.6.0/example/save_image.dart).
 
 ## Input and options
 
@@ -173,15 +173,18 @@ for ranges, standalone and dither benchmarks, and reproduction commands.
 
 ## Status
 
-Version **0.5.0** includes ordered writes and correctness fixes.
+Version **0.6.0** strengthens regression coverage and development tooling while
+preserving Dart 3.7 support and the public API.
 Frame diffing and per-frame palettes remain future work; see the
-[roadmap](https://github.com/srad/gif_writer/blob/v0.5.0/ROADMAP.md).
+[roadmap](https://github.com/srad/gif_writer/blob/v0.6.0/ROADMAP.md).
 
-The current implementation passes **182 VM tests and 168 Chrome tests**, with
-clean static analysis. Coverage includes independent decoding, strict LZW
-termination checks, transparency, queued writes, and failure cleanup. Fourteen
-file-system and image-conversion tests run only on the VM.
+Verified on Dart 3.7.0 and 3.13.7 with **195 VM tests and 182 Chrome tests** and
+clean static analysis. **VM line coverage is 98.8%** on Dart 3.13.7. Tests cover
+independent decoding, strict LZW termination, epoch recycling, exact sub-block
+boundaries, transparency, queued writes, and failure cleanup. Fourteen file-system
+and image-conversion tests run only on the VM; the file API rejection test runs
+only in Chrome. See [maintenance validation and measurements](https://github.com/srad/gif_writer/blob/v0.6.0/doc/maintenance-review.md).
 
 ## Licence
 
-MIT © [Saman Sedighi Rad](https://github.com/srad) — see [LICENSE](https://github.com/srad/gif_writer/blob/v0.5.0/LICENSE).
+MIT © [Saman Sedighi Rad](https://github.com/srad) — see [LICENSE](https://github.com/srad/gif_writer/blob/v0.6.0/LICENSE).

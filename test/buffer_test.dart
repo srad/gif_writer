@@ -4,6 +4,7 @@ import 'package:gif_writer/gif_writer.dart';
 import 'package:image/image.dart' as img;
 import 'package:test/test.dart';
 
+import 'lzw_termination_test.dart' show decodePayload, imageData;
 import 'round_trip_test.dart' show RecordingSink;
 
 /// The staging buffer, and the corruption it can cause when it is too small.
@@ -108,40 +109,46 @@ void main() {
     }
   });
 
-  test('a frame whose data lands exactly on a block boundary', () async {
-    // 255 is the block maximum, so compressed output that is an exact multiple
-    // of it ends a block precisely as the data runs out. The encoder must not
-    // then open an empty block: a zero-length block is GIF's *terminator*, and
-    // one in the middle of a frame truncates the image.
-    //
-    // The size that lands on the boundary is not predictable from the input, so
-    // this sweeps a range and relies on the round trip to catch any of them.
-    final colors = grays(4);
-    for (var side = 20; side <= 40; side++) {
+  for (final capacity in [GifWriter.minBufferSize, 64 * 1024]) {
+    test('a full final sub-block with a $capacity-byte staging buffer', () async {
+      // This seeded fixture compresses to exactly 255 bytes, including EOI.
+      // Assert the boundary itself: sweeping image sizes without checking the
+      // compressed length previously left this path untested.
+      const width = 810;
+      var state = 12345;
+      final pixels = Uint8List(width);
+      for (var i = 0; i < width; i++) {
+        state = (state * 1664525 + 1013904223) & 0xFFFFFFFF;
+        pixels[i] = (state >> 16) & 3;
+      }
+      final colors = grays(4);
       final sink = RecordingSink();
       final gif = GifWriter(
         sink,
-        width: side,
-        height: side,
+        width: width,
+        height: 1,
         colors: colors,
-        bufferSize: GifWriter.minBufferSize,
+        repeat: GifRepeat.once,
+        bufferSize: capacity,
       );
-      final pixels = Uint8List.fromList(<int>[
-        for (var i = 0; i < side * side; i++) (i * 5 + i ~/ 7) % 4,
-      ]);
       await gif.addIndexedFrame(pixels);
       await gif.close();
 
+      final data = imageData(sink.result);
+      expect(data.blockLengths, [255]);
+      expect(data.payload, hasLength(255));
+      expect(decodePayload(payload: data.payload, minimum: data.minimum,
+        expected: width).pixels, pixels);
       final frame = img.GifDecoder().decode(sink.result)?.frames.single;
-      expect(frame, isNotNull, reason: '${side}x$side did not decode');
+      expect(frame, isNotNull);
       for (var i = 0; i < pixels.length; i++) {
-        final pixel = frame!.getPixel(i % side, i ~/ side);
+        final pixel = frame!.getPixel(i, 0);
         expect(
           (pixel.r.toInt() << 16) | (pixel.g.toInt() << 8) | pixel.b.toInt(),
           colors[pixels[i]],
-          reason: '${side}x$side, pixel $i',
+          reason: 'pixel $i',
         );
       }
-    }
-  });
+    });
+  }
 }

@@ -7,6 +7,39 @@ import 'package:test/test.dart';
 
 import 'round_trip_test.dart' show RecordingSink;
 
+// Walk block lengths rather than searching compressed pixels for 0x21, 0xF9.
+List<int> _frameDelays(Uint8List bytes) {
+  var offset = 13 + ((bytes[10] & 0x80) == 0
+      ? 0 : 3 * (1 << ((bytes[10] & 7) + 1)));
+  final delays = <int>[];
+  while (offset < bytes.length) {
+    final tag = bytes[offset++];
+    if (tag == 0x3B) {
+      expect(offset, bytes.length);
+      return delays;
+    }
+    if (tag == 0x21) {
+      final label = bytes[offset++];
+      if (label == 0xF9) {
+        expect(bytes[offset], 4);
+        delays.add(bytes[offset + 2] | (bytes[offset + 3] << 8));
+      }
+    } else if (tag == 0x2C) {
+      final flags = bytes[offset + 8];
+      offset += 9;
+      if (flags & 0x80 != 0) offset += 3 * (1 << ((flags & 7) + 1));
+      offset++; // LZW minimum code size.
+    } else {
+      throw FormatException('unexpected GIF block $tag');
+    }
+    while (bytes[offset] != 0) {
+      offset += bytes[offset] + 1;
+    }
+    offset++;
+  }
+  throw const FormatException('missing GIF trailer');
+}
+
 /// The promise the package is named for, asserted rather than assumed.
 ///
 /// Every other GIF encoder available in Dart builds the finished file in memory
@@ -252,32 +285,39 @@ void main() {
     expect(decoded?.frames, hasLength(4));
   });
 
-  test('the delay lands in the file as hundredths', () async {
-    // GIF has no finer unit. 40 ms is 4, and a viewer will honour it; anything
-    // under 20 ms is a fiction the format cannot carry, which the API documents
-    // rather than silently clamps.
+  for (final (microseconds, centiseconds) in <(int, int)>[
+    (-10000, 0),
+    (0, 0),
+    (4999, 0),
+    (5000, 1),
+    (14999, 1),
+    (15000, 2),
+    (40000, 4),
+    (2550000, 255),
+    (2560000, 256),
+    (655350000, 65535),
+    (655355000, 65535),
+    (1200000000, 65535),
+  ]) {
+    test('$microseconds microseconds writes $centiseconds hundredths', () async {
+      final sink = RecordingSink();
+      final gif = GifWriter(sink, width: 2, height: 2, colors: twoColours());
+      await gif.addIndexedFrame(
+        Uint8List.fromList(<int>[0, 1, 1, 0]),
+        delay: Duration(microseconds: microseconds),
+      );
+      await gif.close();
+      expect(_frameDelays(sink.result), [centiseconds]);
+    });
+  }
+
+  test('a zero delay clears both reused delay bytes', () async {
     final sink = RecordingSink();
     final gif = GifWriter(sink, width: 2, height: 2, colors: twoColours());
-    await gif.addIndexedFrame(
-      Uint8List.fromList(<int>[0, 1, 1, 0]),
-      delay: const Duration(milliseconds: 40),
-    );
+    final pixels = Uint8List.fromList(<int>[0, 1, 1, 0]);
+    await gif.addIndexedFrame(pixels, delay: const Duration(milliseconds: 655350));
+    await gif.addIndexedFrame(pixels);
     await gif.close();
-
-    final bytes = sink.result;
-    // The *pair*, not just the extension introducer: the Netscape looping block
-    // is also a 0x21 and comes first, so searching for the introducer alone
-    // finds the wrong one.
-    var control = -1;
-    for (var i = 0; i + 1 < bytes.length; i++) {
-      if (bytes[i] == 0x21 && bytes[i + 1] == 0xF9) {
-        control = i;
-        break;
-      }
-    }
-    expect(control, isNonNegative, reason: 'no graphic control block');
-    // Block size, packed field, then the delay: two bytes, little-endian.
-    expect(bytes[control + 2], 0x04, reason: 'block size');
-    expect(bytes[control + 4] | (bytes[control + 5] << 8), 4);
+    expect(_frameDelays(sink.result), [65535, 0]);
   });
 }

@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:gif_writer/gif_writer.dart';
 import 'package:gif_writer/src/color_mapper.dart';
 import 'package:gif_writer/src/dither.dart';
+import 'package:image/image.dart' as img;
 
 import 'sample_image.dart';
 
@@ -13,6 +15,8 @@ import 'sample_image.dart';
 ///
 /// **This is what picks the default**, rather than an assertion in a doc comment.
 /// Run it with `dart run tool/dither.dart`.
+/// `--timing-json` emits one warmed timing trial without quality calculations;
+/// `--fixtures-json` emits independently decoded GIFs for untimed byte comparisons.
 ///
 /// The quality column is the one that needs care. See [blurredError].
 final class CountingSink implements StreamSink<List<int>> {
@@ -27,6 +31,90 @@ final class CountingSink implements StreamSink<List<int>> {
   Future<void> close() async {}
   @override
   Future<void> get done => Future<void>.value();
+}
+
+final class _CapturingSink implements StreamSink<List<int>> {
+  final bytes = BytesBuilder();
+  @override
+  void add(List<int> data) => bytes.add(data);
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) => throw error;
+  @override
+  Future<void> addStream(Stream<List<int>> stream) => stream.forEach(add);
+  @override
+  Future<void> close() async {}
+  @override
+  Future<void> get done => Future<void>.value();
+}
+
+Future<void> _writeBenchmarkJson({
+  required List<(String, GifDither)> dithers,
+  required bool fixtures,
+}) async {
+  const side = 256;
+  const frames = 30;
+  final rgb = SampleImage.photoRgb(side: side);
+  final results = <Map<String, Object>>[];
+  for (final levels in [3, 6]) {
+    final colors = uniformPalette(levels);
+    for (final (name, dither) in dithers) {
+      GifWriter writer(StreamSink<List<int>> sink) => GifWriter(
+        sink, width: side, height: side, colors: colors, dither: dither,
+        bufferSize: 64 * 1024,
+      );
+      if (fixtures) {
+        final sink = _CapturingSink();
+        final gif = writer(sink);
+        try {
+          for (var frame = 0; frame < frames; frame++) {
+            await gif.addRgbFrame(rgb);
+          }
+        } finally {
+          await gif.close();
+        }
+        final bytes = sink.bytes.takeBytes();
+        final decoded = img.GifDecoder().decode(bytes);
+        if (decoded == null || decoded.frames.length != frames ||
+            decoded.width != side || decoded.height != side) {
+          throw StateError('$name with $levels levels did not decode correctly');
+        }
+        results.add({
+          'name': name, 'colors': levels * levels * levels,
+          'bytes': bytes.length, 'gif': base64Encode(bytes),
+        });
+      } else {
+        // Match the default report: two separate one-frame warm-up writers,
+        // then a new writer whose mapping, encoding and close are timed.
+        for (var warmup = 0; warmup < 2; warmup++) {
+          final gif = writer(CountingSink());
+          try {
+            await gif.addRgbFrame(rgb);
+          } finally {
+            await gif.close();
+          }
+        }
+        final sink = CountingSink();
+        final gif = writer(sink);
+        final watch = Stopwatch()..start();
+        try {
+          for (var frame = 0; frame < frames; frame++) {
+            await gif.addRgbFrame(rgb);
+          }
+        } finally {
+          await gif.close();
+          watch.stop();
+        }
+        results.add({
+          'name': name, 'colors': levels * levels * levels,
+          'microseconds': watch.elapsedMicroseconds, 'bytes': sink.bytes,
+        });
+      }
+    }
+  }
+  print(jsonEncode({
+    'mode': fixtures ? 'fixtures' : 'timings',
+    'side': side, 'frames': frames, 'cases': results,
+  }));
 }
 
 /// Root-mean-square error after a **5x5 box blur of both images**.
@@ -166,12 +254,10 @@ GifColorTable uniformPalette(int levels) => GifColorTable.packed(<int>[
             (b * 255 ~/ (levels - 1)),
 ]);
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   const side = 256;
   const frames = 30;
   const trials = 5;
-
-  final rgb = SampleImage.photoRgb(side: side);
 
   const dithers = <(String, GifDither)>[
     ('none', GifDither.none),
@@ -181,6 +267,18 @@ Future<void> main() async {
     ('floydSteinberg', GifDither.floydSteinberg),
     ('atkinson', GifDither.atkinson),
   ];
+
+  if (args.length == 1 &&
+      (args.single == '--timing-json' || args.single == '--fixtures-json')) {
+    await _writeBenchmarkJson(
+      dithers: dithers, fixtures: args.single == '--fixtures-json',
+    );
+    return;
+  }
+  if (args.isNotEmpty) {
+    throw ArgumentError('expected --timing-json, --fixtures-json, or no arguments');
+  }
+  final rgb = SampleImage.photoRgb(side: side);
 
   for (final (levels, label) in <(int, String)>[
     (3, '27 colours (3 per channel)'),

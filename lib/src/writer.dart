@@ -336,7 +336,7 @@ class GifWriter implements StreamConsumer<GifFrame> {
     final result = _tail.then((_) => _executeFrame(frame));
     // Keep the ordering chain usable after invalid input. Emission failures are
     // latched separately, so later operations release their inputs without I/O.
-    _tail = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    _tail = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return result;
   }
 

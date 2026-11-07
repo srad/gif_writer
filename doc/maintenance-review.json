@@ -1,0 +1,1585 @@
+{
+  "sdk": "3.13.7",
+  "side": 256,
+  "frames": 30,
+  "trials": 9,
+  "order": "AB,BA,AB,BA,AB,BA,AB,BA,AB",
+  "byteIdentical": true,
+  "keep": false,
+  "summary": [
+    {
+      "name": "none",
+      "colors": 27,
+      "baselineMedian": 103.43978534224233,
+      "baselineLow": 57.213362821557446,
+      "baselineHigh": 107.06747263519033,
+      "candidateMedian": 99.04186187093849,
+      "candidateLow": 50.21659174499387,
+      "candidateHigh": 110.29901823281908,
+      "percentChange": -4.2516749785905,
+      "spread": 60.08242648782521,
+      "verdict": "level",
+      "bytes": 153039
+    },
+    {
+      "name": "bayer4",
+      "colors": 27,
+      "baselineMedian": 43.94064008582156,
+      "baselineLow": 33.2827735644637,
+      "baselineHigh": 52.427401935948375,
+      "candidateMedian": 44.53484948014587,
+      "candidateLow": 26.973987487652288,
+      "candidateHigh": 53.02265372168285,
+      "percentChange": 1.3523002695539805,
+      "spread": 26.048666234030563,
+      "verdict": "level",
+      "bytes": 284379
+    },
+    {
+      "name": "bayer8",
+      "colors": 27,
+      "baselineMedian": 46.779128696852176,
+      "baselineLow": 32.9238395069998,
+      "baselineHigh": 51.27878772071673,
+      "candidateMedian": 42.84985724560295,
+      "candidateLow": 28.775411635565312,
+      "candidateHigh": 53.01693452701974,
+      "percentChange": -8.39962513349171,
+      "spread": 24.24152289145443,
+      "verdict": "level",
+      "bytes": 290049
+    },
+    {
+      "name": "blueNoise",
+      "colors": 27,
+      "baselineMedian": 43.42145365401179,
+      "baselineLow": 30.146740880445282,
+      "baselineHigh": 44.942053169360186,
+      "candidateMedian": 35.5568416103013,
+      "candidateLow": 25.648424760289608,
+      "candidateHigh": 41.53456143315869,
+      "percentChange": -18.11227257930336,
+      "spread": 15.886136672869085,
+      "verdict": "level",
+      "bytes": 429369
+    },
+    {
+      "name": "floydSteinberg",
+      "colors": 27,
+      "baselineMedian": 22.164752037698836,
+      "baselineLow": 19.30899019858184,
+      "baselineHigh": 28.11376603320321,
+      "candidateMedian": 22.864851663623572,
+      "candidateLow": 15.020627693059927,
+      "candidateHigh": 26.362027353177794,
+      "percentChange": 3.1586170002442344,
+      "spread": 11.341399660117867,
+      "verdict": "level",
+      "bytes": 650859
+    },
+    {
+      "name": "atkinson",
+      "colors": 27,
+      "baselineMedian": 21.594121717354774,
+      "baselineLow": 14.331178155683036,
+      "baselineHigh": 25.064123811223578,
+      "candidateMedian": 20.770132792444457,
+      "candidateLow": 13.454321494559638,
+      "candidateHigh": 24.18540569797766,
+      "percentChange": -3.815801983963503,
+      "spread": 10.732945655540542,
+      "verdict": "level",
+      "bytes": 602169
+    },
+    {
+      "name": "none",
+      "colors": 216,
+      "baselineMedian": 77.96335950511539,
+      "baselineLow": 69.05067959119165,
+      "baselineHigh": 90.5902409805096,
+      "candidateMedian": 73.45438242546514,
+      "candidateLow": 46.1142254016653,
+      "candidateHigh": 92.9368943512172,
+      "percentChange": -5.783456624075319,
+      "spread": 46.822668949551904,
+      "verdict": "level",
+      "bytes": 281841
+    },
+    {
+      "name": "bayer4",
+      "colors": 216,
+      "baselineMedian": 37.74245565537895,
+      "baselineLow": 31.17149969083443,
+      "baselineHigh": 43.870046411995716,
+      "candidateMedian": 42.345035537368084,
+      "candidateLow": 29.18764845605701,
+      "candidateHigh": 44.85080755543389,
+      "percentChange": 12.194701701486107,
+      "spread": 15.66315909937688,
+      "verdict": "level",
+      "bytes": 488271
+    },
+    {
+      "name": "bayer8",
+      "colors": 216,
+      "baselineMedian": 36.96959440401647,
+      "baselineLow": 27.475334693535313,
+      "baselineHigh": 45.27217463387676,
+      "candidateMedian": 41.851970113034035,
+      "candidateLow": 29.875094970369243,
+      "candidateHigh": 44.6542051829476,
+      "percentChange": 13.206462737084106,
+      "spread": 17.796839940341446,
+      "verdict": "level",
+      "bytes": 491241
+    },
+    {
+      "name": "blueNoise",
+      "colors": 216,
+      "baselineMedian": 37.63408751579189,
+      "baselineLow": 29.235825068030753,
+      "baselineHigh": 41.01040862727102,
+      "candidateMedian": 38.646826410866275,
+      "candidateLow": 29.95840126777089,
+      "candidateHigh": 41.94304,
+      "percentChange": 2.691014880191855,
+      "spread": 11.984638732229115,
+      "verdict": "level",
+      "bytes": 572571
+    },
+    {
+      "name": "floydSteinberg",
+      "colors": 216,
+      "baselineMedian": 21.89593727726301,
+      "baselineLow": 18.693593473672202,
+      "baselineHigh": 24.164597723753104,
+      "candidateMedian": 24.217878127194115,
+      "candidateLow": 19.954328167341593,
+      "candidateHigh": 26.666304981757516,
+      "percentChange": 10.604436889496558,
+      "spread": 6.711976814415923,
+      "verdict": "level",
+      "bytes": 772881
+    },
+    {
+      "name": "atkinson",
+      "colors": 216,
+      "baselineMedian": 20.719788384322737,
+      "baselineLow": 15.749807741604716,
+      "baselineHigh": 24.112142655661707,
+      "candidateMedian": 22.715855391618813,
+      "candidateLow": 19.280775906875483,
+      "candidateHigh": 24.313715790905604,
+      "percentChange": 9.633626416794709,
+      "spread": 8.36233491405699,
+      "verdict": "level",
+      "bytes": 686241
+    }
+  ],
+  "runs": [
+    {
+      "trial": 1,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 23713,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 37501,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 38341,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 49148,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 83260,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 88453,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 23688,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 52092,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 43428,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 47941,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 90888,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 105103,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 1,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 39152,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 72888,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 68325,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 76655,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 130892,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 146130,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 42635,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 67360,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 65810,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 57093,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 85006,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 101971,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 2,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 18397,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 47177,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 52187,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 47336,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 86965,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 106214,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 26766,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 55062,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 51874,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 55649,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 98529,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 96844,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 2,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 25132,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 44744,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 45417,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 45279,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 88703,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 103143,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 26372,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 44992,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 59589,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 59199,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 89792,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 96450,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 3,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 19439,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 49671,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 39354,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 49167,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 91676,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 93613,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 25218,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 52553,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 53181,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 57324,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 91957,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 88762,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 3,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 22869,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 37080,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 37084,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 55294,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 88035,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 97144,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 26222,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 46430,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 45344,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 48375,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 81183,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 83274,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 4,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 18342,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 44147,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 45883,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 62746,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 78878,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 81292,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 21258,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 45321,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 45748,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 48615,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 73866,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 94288,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 4,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 18762,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 51277,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 39887,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 43907,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 70608,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 94311,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 25994,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 51473,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 48955,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 54507,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 83438,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 81539,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 5,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 18780,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 37633,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 38484,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 43747,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 69933,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 78442,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 22098,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 44816,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 45572,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 49079,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 84537,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 85267,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 5,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 17825,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 37769,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 43157,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 48702,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 74580,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 94455,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 32081,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 44899,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 44443,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 50873,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 93460,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 80863,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 6,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 22125,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 48852,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 37121,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 57511,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 80097,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 85437,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 21155,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 44451,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 61194,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 46875,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 73729,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 86551,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 6,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 19007,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 39567,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 45517,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 44829,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 97999,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 91047,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 21703,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 44874,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 53626,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 48697,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 81362,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 87968,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 7,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 18363,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 44458,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 53711,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 51041,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 97431,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 84021,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 24652,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 63073,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 46572,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 52242,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 89326,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 94889,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 7,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 18747,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 41413,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 45097,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 50164,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 75785,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 88683,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 21697,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 43836,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 46977,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 60516,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 85667,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 84330,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 8,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 19851,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 39687,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 52815,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 48358,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 85987,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 94659,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 27909,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 49586,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 44029,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 48394,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 80126,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 92558,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 8,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 18944,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 45553,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 42029,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 45033,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 79562,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 80108,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 25298,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 56079,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 55253,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 51813,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 94656,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 124832,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 9,
+      "version": "baseline",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 34364,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 59072,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 59716,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 65217,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 101822,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 137189,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 28473,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 56368,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 71558,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 67249,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 105174,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 108886,
+          "bytes": 686241
+        }
+      ]
+    },
+    {
+      "trial": 9,
+      "version": "candidate",
+      "cases": [
+        {
+          "name": "none",
+          "colors": 27,
+          "microseconds": 33965,
+          "bytes": 153039
+        },
+        {
+          "name": "bayer4",
+          "colors": 27,
+          "microseconds": 50950,
+          "bytes": 284379
+        },
+        {
+          "name": "bayer8",
+          "colors": 27,
+          "microseconds": 57874,
+          "bytes": 290049
+        },
+        {
+          "name": "blueNoise",
+          "colors": 27,
+          "microseconds": 56292,
+          "bytes": 429369
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 27,
+          "microseconds": 95043,
+          "bytes": 650859
+        },
+        {
+          "name": "atkinson",
+          "colors": 27,
+          "microseconds": 107947,
+          "bytes": 602169
+        },
+        {
+          "name": "none",
+          "colors": 216,
+          "microseconds": 31613,
+          "bytes": 281841
+        },
+        {
+          "name": "bayer4",
+          "colors": 216,
+          "microseconds": 65908,
+          "bytes": 488271
+        },
+        {
+          "name": "bayer8",
+          "colors": 216,
+          "microseconds": 58800,
+          "bytes": 491241
+        },
+        {
+          "name": "blueNoise",
+          "colors": 216,
+          "microseconds": 65627,
+          "bytes": 572571
+        },
+        {
+          "name": "floydSteinberg",
+          "colors": 216,
+          "microseconds": 80845,
+          "bytes": 772881
+        },
+        {
+          "name": "atkinson",
+          "colors": 216,
+          "microseconds": 82971,
+          "bytes": 686241
+        }
+      ]
+    }
+  ]
+}
