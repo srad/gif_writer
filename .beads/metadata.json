@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "gif_writer",
+  "project_id": "62610ddf-36bf-4450-9c89-091269d31916"
+}
